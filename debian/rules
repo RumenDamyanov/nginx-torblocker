@@ -1,0 +1,11 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	./build.sh
+
+override_dh_auto_install:
+	install -D -m 644 /usr/src/nginx-1.24.0/objs/ngx_http_torblocker_module.so \
+		debian/nginx-torblocker/usr/lib/nginx/modules/ngx_http_torblocker_module.so

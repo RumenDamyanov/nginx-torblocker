@@ -1,0 +1,7 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: nginx-torblocker
+Source: https://github.com/RumenDamyanov/nginx-torblocker
+
+Files: *
+Copyright: 2025 Rumen Damyanov <contact@rumenx.com>
+License: BSD-3-Clause

@@ -1,0 +1,8 @@
+nginx-torblocker (1.0.0-1) unstable; urgency=medium
+
+  * Initial release.
+  * Automatically blocks Tor exit nodes
+  * Supports per-location configuration
+  * Regular updates of Tor exit node list
+
+ -- Rumen Damyanov <contact@rumenx.com>  Fri, 22 Mar 2025 20:22:00 +0200

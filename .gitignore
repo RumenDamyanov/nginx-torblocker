@@ -1,7 +1,12 @@
 .DS_Store
 *.so
 *.o
-test.conf
 /build/*
 .vscode/*
 !.vscode/c_cpp_properties.json
+dist/*
+debian/.debhelper/
+debian/nginx-torblocker/*
+debian/nginx-torblocker.*
+debian/debhelper-build-stamp
+debian/files

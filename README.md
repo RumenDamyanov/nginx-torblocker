@@ -23,17 +23,20 @@ A simple Nginx module to block access from Tor exit nodes.
 ### Option 1: Direct Installation
 
 1. Check your Nginx version:
+
 ```bash
 nginx -v
 ```
 
 2. Clone the repository:
+
 ```bash
 git clone https://github.com/RumenDamyanov/nginx-torblocker.git
 cd nginx-torblocker
 ```
 
 3. Build and install the module:
+
 ```bash
 ./build.sh
 ```
@@ -95,6 +98,7 @@ http {
 ## Examples
 
 ### Block Tor access except for specific IP
+
 ```nginx
 http {
     torblock on;
@@ -118,15 +122,55 @@ http {
 ### Common Issues
 
 1. Module version mismatch:
+
 ```bash
 nginx -v
 # Ensure module is built against this exact version
 ```
 
 2. Permission issues:
+
 ```bash
 # Check module permissions
 ls -l /usr/lib/nginx/modules/ngx_http_torblocker_module.so
+```
+
+## Building the Debian Package
+
+```bash
+# Build the package using Docker
+./build-package.sh
+
+# Package will be available in dist/ directory
+ls dist/
+```
+
+### Install from PPA (Ubuntu)
+
+1. Add the PPA repository:
+
+```bash
+sudo add-apt-repository ppa:rumenx/nginx-torblocker
+```
+
+2. Install the module:
+
+```bash
+sudo apt update
+sudo apt install nginx-torblocker
+```
+
+3. Enable the module in your nginx configuration (see advance examples above):
+
+```nginx
+# Add to the beginning of nginx.conf
+load_module modules/ngx_http_torblocker_module.so;
+```
+
+4. Restart Nginx:
+
+```bash
+sudo systemctl restart nginx
 ```
 
 ## License

@@ -23,7 +23,7 @@ docker compose exec nginx-dev nginx -t || handle_error "Module loading failed"
 
 # Test configuration syntax
 echo "Testing basic configuration..."
-cat > test.conf << EOF
+cat > conf/test.conf << EOF
 load_module modules/ngx_http_torblocker_module.so;
 events {}
 http {
@@ -35,6 +35,6 @@ http {
 }
 EOF
 
-docker compose exec nginx-dev nginx -t -c /build/test.conf || handle_error "Configuration test failed"
+docker compose exec nginx-dev nginx -t -c /build/conf/test.conf || handle_error "Configuration test failed"
 
 echo -e "${GREEN}All tests passed successfully!${NC}"
