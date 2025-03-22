@@ -1,0 +1,10 @@
+services:
+  nginx-dev:
+    build:
+      context: .
+    volumes:
+      - .:/build
+    ports:
+      - "8080:80"
+    command: tail -f /dev/null
+    user: root
