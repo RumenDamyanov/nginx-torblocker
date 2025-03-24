@@ -10,3 +10,16 @@ debian/nginx-torblocker/*
 debian/nginx-torblocker.*
 debian/debhelper-build-stamp
 debian/files
+config.env
+nginx-torblocker_*
+vendor/*
+!vendor/.gitkeep
+nginx-sources/*
+build-test/*
+build-ppa/*
+workflow/*
+object-x86_64/*
+object-arm64/*
+parent/*
+dist/*
+!dist/.gitkeep

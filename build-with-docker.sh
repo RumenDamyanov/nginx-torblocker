@@ -52,6 +52,13 @@ if ! docker compose ps | grep -q "nginx-dev.*Up"; then
     exit 1
 fi
 
+# Check if nginx-dev is installed
+docker compose exec nginx-dev bash -c "dpkg -l | grep nginx-dev" || {
+    echo "Error: nginx-dev package is not installed in the container"
+    docker compose logs nginx-dev
+    exit 1
+}
+
 # Build module inside container
 echo "Building module..."
 docker compose exec nginx-dev bash -c "cd /build && ./build.sh" || {

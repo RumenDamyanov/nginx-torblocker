@@ -1,0 +1,17 @@
+FROM ubuntu:22.04
+
+# Install required dependencies
+RUN apt-get update && apt-get install -y \
+    devscripts \
+    dput \
+    gnupg2 \
+    gpg-agent \
+    expect \
+    pinentry-tty && \
+    rm -rf /var/lib/apt/lists/*
+
+# Add helper script for non-interactive signing
+COPY debsign-helper /usr/local/bin/debsign-helper
+
+# Make the helper script executable
+RUN chmod +x /usr/local/bin/debsign-helper

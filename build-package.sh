@@ -3,10 +3,10 @@ set -e
 
 # Colors for output
 GREEN='\033[0;32m'
-RED='\033[0m'
+RED='\033[0;31m'
 NC='\033[0m'
 
-VERSION="1.0.0"
+VERSION="1.0.33"
 
 # Check debian directory structure
 if [ ! -d "debian" ] || \
@@ -26,7 +26,9 @@ fi
 
 # Build packaging Docker image
 echo "Building packaging Docker image..."
-docker build -t nginx-torblocker-packaging -f Dockerfile.packaging .
+if ! docker image ls | grep -q "nginx-torblocker-packaging"; then
+    docker build -t nginx-torblocker-packaging -f Dockerfile.packaging .
+fi
 
 # Run packaging in container
 echo "Building Debian package..."
@@ -35,10 +37,11 @@ docker run --rm \
     nginx-torblocker-packaging bash -c '
     cd /build && \
     # Create source tarball inside container
+    echo "Creating source tarball: nginx-torblocker_'${VERSION}'.orig.tar.gz" && \
     tar --exclude=".git" \
-        --exclude="debian" \
         --exclude="dist" \
         -czf "../nginx-torblocker_'${VERSION}'.orig.tar.gz" . && \
+    ls -l ../nginx-torblocker_'${VERSION}'.orig.tar.gz && \
     # Build package
     debuild -us -uc && \
     # Move package to dist directory

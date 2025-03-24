@@ -1,25 +1,95 @@
-FROM ubuntu:24.04
+# Set build arguments
+ARG UBUNTU_VERSION=jammy
+ARG NGINX_VERSION=1.24.0
 
-# Install packaging tools
+# Use the appropriate base image based on the arguments
+FROM ubuntu:${UBUNTU_VERSION}
+
+# Set environment variables
+ENV UBUNTU_VERSION=${UBUNTU_VERSION}
+ENV NGINX_VERSION=${NGINX_VERSION}
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install required dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     devscripts \
-    debhelper \
-    dh-make \
-    nginx-dev \
+    dput \
+    wget \
+    gnupg \
+    software-properties-common \
+    curl \
+    gnupg2 \
+    ca-certificates \
+    lsb-release \
     libpcre3-dev \
     zlib1g-dev \
     libssl-dev \
     git \
-    gnupg2 \
-    wget
+    debhelper \
+    dh-make \
+    dpkg-dev && \
+    rm -rf /var/lib/apt/lists/*
 
-# Get nginx source
-ENV NGINX_VERSION=1.24.0
-RUN cd /usr/src && \
-    wget "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz" && \
-    tar -xzf "nginx-${NGINX_VERSION}.tar.gz" && \
-    rm "nginx-${NGINX_VERSION}.tar.gz"
+# Add the official Nginx repository
+RUN curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] http://nginx.org/packages/ubuntu $(lsb_release -cs) nginx" \
+        > /etc/apt/sources.list.d/nginx.list && \
+    apt-get update
 
-# Set work directory
+# Debug: Show available Nginx versions
+RUN apt-cache policy nginx nginx-dev
+
+# Install Nginx or build it from source if necessary
+RUN DEBIAN_FRONTEND=noninteractive bash -c '\
+    set -e; \
+    echo "Trying to install nginx=${NGINX_VERSION}-1~$(lsb_release -cs)"; \
+    if apt-get install -y \
+        "nginx=${NGINX_VERSION}-1~$(lsb_release -cs)" \
+        "nginx-dev=${NGINX_VERSION}-1~$(lsb_release -cs)"; then \
+        echo "Successfully installed nginx-dev=${NGINX_VERSION}-1~$(lsb_release -cs)."; \
+    else \
+        echo "Falling back to jammy..."; \
+        if apt-get install -y \
+            "nginx=${NGINX_VERSION}-1~jammy" \
+            "nginx-dev=${NGINX_VERSION}-1~jammy"; then \
+            echo "Successfully installed nginx-dev=${NGINX_VERSION}-1~jammy."; \
+        else \
+            echo "Building nginx from source..."; \
+            if [ -f "/build/nginx-sources/${NGINX_VERSION}/$(lsb_release -cs)/nginx-${NGINX_VERSION}.tar.gz" ]; then \
+                echo "Using cached source from repo"; \
+                mkdir -p /usr/src/nginx; \
+                tar -xzf "/build/nginx-sources/${NGINX_VERSION}/$(lsb_release -cs)/nginx-${NGINX_VERSION}.tar.gz" -C /usr/src/nginx --strip-components=1; \
+            else \
+                echo "Downloading nginx ${NGINX_VERSION} source"; \
+                mkdir -p /usr/src/nginx; \
+                wget -O nginx.tar.gz "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz" && \
+                tar -xzf nginx.tar.gz -C /usr/src/nginx --strip-components=1; \
+                if [ -d "/build" ]; then \
+                    mkdir -p "/build/nginx-sources/${NGINX_VERSION}/$(lsb_release -cs)"; \
+                    cp nginx.tar.gz "/build/nginx-sources/${NGINX_VERSION}/$(lsb_release -cs)/nginx-${NGINX_VERSION}.tar.gz"; \
+                fi; \
+            fi; \
+            cd /usr/src/nginx && \
+            ./configure \
+                --prefix=/usr \
+                --sbin-path=/usr/sbin/nginx \
+                --modules-path=/usr/lib/nginx/modules \
+                --conf-path=/etc/nginx/nginx.conf \
+                --error-log-path=/var/log/nginx/error.log \
+                --http-log-path=/var/log/nginx/access.log \
+                --pid-path=/var/run/nginx.pid \
+                --lock-path=/var/run/nginx.lock \
+                --with-compat \
+                --with-threads \
+                --with-http_ssl_module && \
+            make && make install && \
+            mkdir -p /usr/include/nginx && \
+            cp -r /usr/src/nginx/src /usr/include/nginx/ && \
+            ln -sf /usr/include/nginx/src /usr/include/nginx-dev; \
+            echo "Successfully built nginx ${NGINX_VERSION} from source."; \
+        fi; \
+    fi'
+
+# Set the working directory
 WORKDIR /build

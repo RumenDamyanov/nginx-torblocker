@@ -1,12 +1,8 @@
 Source: nginx-torblocker
 Section: web
 Priority: optional
-Maintainer: Rumen Damyanov <contact@rumenx.com>
-Build-Depends: debhelper-compat (= 13),
-               nginx-dev,
-               libpcre3-dev,
-               zlib1g-dev,
-               libssl-dev
+Maintainer: Rumen Damyanov <dev@rumenx.com>
+Build-Depends: debhelper-compat (= 13), build-essential
 Standards-Version: 4.6.0
 Homepage: https://github.com/RumenDamyanov/nginx-torblocker
 
