@@ -31,6 +31,16 @@ RUN apt-get update && apt-get install -y \
     dpkg-dev && \
     rm -rf /var/lib/apt/lists/*
 
+# Install required tools for building and managing Debian packages
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    dpkg-dev \
+    devscripts \
+    debhelper \
+    gnupg \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
 # Add the official Nginx repository
 RUN curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] http://nginx.org/packages/ubuntu $(lsb_release -cs) nginx" \

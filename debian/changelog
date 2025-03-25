@@ -1,11 +1,11 @@
-nginx-torblocker (1.0.33-1) unstable; urgency=medium
+nginx-torblocker (1.1.0-1) unstable; urgency=medium
 
     * Added multi-distro and multi-nginx version support
     * Enhanced build system for all Ubuntu releases
     * Improved compatibility with different Nginx versions
     * Added compatibility matrix for Ubuntu and Nginx versions
 
- -- Rumen Damyanov <dev@rumenx.com>  Wed, 27 Mar 2025 16:00:00 +0200
+ -- Rumen Damyanov <dev@rumenx.com>  Wed, 25 Mar 2025 16:00:00 +0200
 
 nginx-torblocker (1.0.6-1) unstable; urgency=medium
 

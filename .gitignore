@@ -23,3 +23,7 @@ obj-arm64-*
 parent/
 dist/
 !dist/.gitkeep
+*-ppa.sh
+debian/changelog
+debian/copyright
+debian/control

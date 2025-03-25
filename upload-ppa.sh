@@ -31,143 +31,178 @@ if [ -z "${GPG_PASSPHRASE:-}" ]; then
     exit 1
 fi
 
-# Set default values for optional settings
-UBUNTU_VERSION="${UBUNTU_VERSION:-jammy}"
-NGINX_VERSION="${NGINX_VERSION:-1.24.0}"
-ARCH="${ARCH:-amd64}"
-BUILD_DIR="./build"  # Unified build directory
+# Loop through the COMPATIBILITY_MATRIX
+echo -e "${YELLOW}Processing compatibility matrix...${NC}"
+while IFS=: read -r UBUNTU_VERSION NGINX_VERSION; do
+    if [[ -z "$UBUNTU_VERSION" || -z "$NGINX_VERSION" ]]; then
+        continue  # Skip empty lines
+    fi
 
-# Prepare build directory
-mkdir -p "${BUILD_DIR}"
-rm -rf "${BUILD_DIR:?}"/*
+    echo -e "${YELLOW}Processing Ubuntu version: ${UBUNTU_VERSION}, Nginx version: ${NGINX_VERSION}${NC}"
 
-# Download and extract Nginx sources
-echo -e "${YELLOW}Downloading Nginx sources for version ${NGINX_VERSION}...${NC}"
-wget -q -O "${BUILD_DIR}/nginx-${NGINX_VERSION}.tar.gz" "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz"
-echo -e "${GREEN}Nginx sources downloaded successfully.${NC}"
+    # Set environment variables for this combination
+    export UBUNTU_VERSION
+    export NGINX_VERSION
 
-# Extract headers
-echo -e "${YELLOW}Extracting Nginx headers for version ${NGINX_VERSION}...${NC}"
-tar -xzf "${BUILD_DIR}/nginx-${NGINX_VERSION}.tar.gz" -C "${BUILD_DIR}"
-echo -e "${GREEN}Nginx headers extracted successfully.${NC}"
+    # Existing working code starts here
+    ARCH="${ARCH:-amd64}"
+    BUILD_DIR="./build"  # Unified build directory
 
-# Copy module source files
-cp -r src "${BUILD_DIR}/"
-cp -r debian "${BUILD_DIR}/"
+    # Prepare build directory
+    mkdir -p "${BUILD_DIR}"
+    rm -rf "${BUILD_DIR:?}"/*
 
-# Copy build-module.sh into the build directory
-cp build-module.sh "${BUILD_DIR}/"
+    # Download and extract Nginx sources
+    echo -e "${YELLOW}Downloading Nginx sources for version ${NGINX_VERSION}...${NC}"
+    wget -q -O "${BUILD_DIR}/nginx-${NGINX_VERSION}.tar.gz" "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz"
+    echo -e "${GREEN}Nginx sources downloaded successfully.${NC}"
 
-# Build Docker image for packaging
-DOCKER_IMAGE_PACKAGING="nginx-torblocker-packaging-${ARCH}-${UBUNTU_VERSION}"
-echo -e "${YELLOW}Building Docker image for packaging: ${DOCKER_IMAGE_PACKAGING}...${NC}"
-docker build -t "${DOCKER_IMAGE_PACKAGING}" -f Dockerfile.packaging .
-echo -e "${GREEN}Docker image for packaging built successfully.${NC}"
+    # Extract headers
+    echo -e "${YELLOW}Extracting Nginx headers for version ${NGINX_VERSION}...${NC}"
+    tar -xzf "${BUILD_DIR}/nginx-${NGINX_VERSION}.tar.gz" -C "${BUILD_DIR}"
+    echo -e "${GREEN}Nginx headers extracted successfully.${NC}"
 
-# Run build in Docker
-echo -e "${YELLOW}Running build inside Docker container...${NC}"
-docker run --rm -v "$(pwd):/workspace" "${DOCKER_IMAGE_PACKAGING}" bash -c "
-    set -e;
-    cd /workspace/build;
-    dpkg-buildpackage -S -us -uc --build=source --output-dir=/workspace/build;
-    echo 'Files in /workspace/build after build:';
-    ls -l /workspace/build;
-"
+    # Copy module source files
+    cp -r src "${BUILD_DIR}/"
+    cp -r debian "${BUILD_DIR}/"
 
-# Find the source changes file
-echo -e "${YELLOW}Looking for .changes file in build/ directory...${NC}"
-SOURCE_CHANGES_FILE=$(find "${BUILD_DIR}" -name "*.changes" | head -n 1)
-if [ -z "${SOURCE_CHANGES_FILE}" ]; then
-    echo -e "${RED}Error: Source changes file not found in build/ directory${NC}"
-    exit 1
-fi
+    # Copy build-module.sh into the build directory
+    cp build-module.sh "${BUILD_DIR}/"
 
-CHANGES_FILE="${SOURCE_CHANGES_FILE}"
+    # Build Docker image for packaging
+    DOCKER_IMAGE_PACKAGING="nginx-torblocker-packaging-${ARCH}-${UBUNTU_VERSION}"
+    echo -e "${YELLOW}Building Docker image for packaging: ${DOCKER_IMAGE_PACKAGING}...${NC}"
+    docker build -t "${DOCKER_IMAGE_PACKAGING}" -f Dockerfile.packaging .
+    echo -e "${GREEN}Docker image for packaging built successfully.${NC}"
 
-# Ensure .buildinfo file is present
-BUILDINFO_FILE=$(find "${BUILD_DIR}" -name "*.buildinfo" | head -n 1)
-if [ -z "${BUILDINFO_FILE}" ]; then
-    echo -e "${RED}Error: .buildinfo file not found in build/ directory. This file is required for signing.${NC}"
-    echo -e "${YELLOW}Listing all files in build/ directory for debugging:${NC}"
+    # Run build in Docker
+    echo -e "${YELLOW}Running build inside Docker container...${NC}"
+    docker run --rm -v "$(pwd)/${BUILD_DIR}:/project" "${DOCKER_IMAGE_PACKAGING}" bash -c "
+        set -e;
+        cd /project;
+        dpkg-buildpackage -S -us -uc --build=source || { echo 'dpkg-buildpackage failed'; exit 1; }
+        echo 'Files in /project:';
+        ls -l /project;
+
+        # Move output files from parent directory if necessary
+        if ls ../*.dsc 2>/dev/null; then
+            mv ../*.dsc /project/
+        fi
+        if ls ../*.changes 2>/dev/null; then
+            mv ../*.changes /project/
+        fi
+        if ls ../*.buildinfo 2>/dev/null; then
+            mv ../*.buildinfo /project/
+        fi
+        if ls ../*.xz 2>/dev/null; then
+            mv ../*.xz /project/
+        fi
+
+        echo 'Final files in /project:';
+        ls -l /project;
+    "
+
+    # Debugging: List files in the build directory
+    echo -e "${YELLOW}Listing files in ${BUILD_DIR}:${NC}"
     ls -l "${BUILD_DIR}"
-    exit 1
-else
-    echo -e "${GREEN}Found .buildinfo file: ${BUILDINFO_FILE}.${NC}"
-fi
 
-# Debugging: List all files in the build/ directory
-echo -e "${YELLOW}Listing all files in the build/ directory for debugging...${NC}"
-ls -l "${BUILD_DIR}"
+    # Debugging: Check for .changes and .buildinfo files
+    echo -e "${YELLOW}Checking for .changes and .buildinfo files:${NC}"
+    find "${BUILD_DIR}" -maxdepth 1 -name "*.changes"
+    find "${BUILD_DIR}" -maxdepth 1 -name "*.buildinfo"
 
-# Ensure required files are present
-REQUIRED_FILES=("${CHANGES_FILE}" "${BUILDINFO_FILE}")
-for FILE in "${REQUIRED_FILES[@]}"; do
-    if [ ! -f "${FILE}" ]; then
-        echo -e "${RED}Error: Required file ${FILE} not found.${NC}"
+    # Find the source changes file
+    echo -e "${YELLOW}Looking for .changes file in ${BUILD_DIR}...${NC}"
+    SOURCE_CHANGES_FILE=$(find "${BUILD_DIR}" -maxdepth 1 -name "*.changes" | head -n 1)
+    if [ -z "${SOURCE_CHANGES_FILE}" ]; then
+        echo -e "${RED}Error: Source changes file not found in ${BUILD_DIR}${NC}"
         exit 1
     fi
-done
 
-# Build Docker image for signing
-DOCKER_IMAGE_SIGNING="nginx-torblocker-signing"
-echo -e "${YELLOW}Building Docker image for signing: ${DOCKER_IMAGE_SIGNING}...${NC}"
-docker build -t "${DOCKER_IMAGE_SIGNING}" -f Dockerfile.signing .
-echo -e "${GREEN}Docker image for signing built successfully.${NC}"
+    CHANGES_FILE="${SOURCE_CHANGES_FILE}"
 
-# Verify GPG configuration inside the Docker container
-echo -e "${YELLOW}Verifying GPG configuration inside the Docker container...${NC}"
-docker run --rm \
-    -v "$(pwd):/workspace" \
-    -v "$HOME/.gnupg:/root/.gnupg:rw" \
-    "${DOCKER_IMAGE_SIGNING}" bash -c "
-    gpg --no-auto-check-trustdb --list-keys;
-    gpg --no-auto-check-trustdb --list-secret-keys;
-    gpgconf --list-dirs;
-    gpg-connect-agent /bye;
-"
+    # Ensure .buildinfo file is in the same directory as .changes
+    BUILDINFO_FILE=$(find "${BUILD_DIR}" -maxdepth 1 -name "*.buildinfo" | head -n 1)
+    if [ -z "${BUILDINFO_FILE}" ]; then
+        echo -e "${RED}Error: .buildinfo file not found. This file is required for signing.${NC}"
+        exit 1
+    else
+        echo -e "${GREEN}Found .buildinfo file: ${BUILDINFO_FILE}.${NC}"
+    fi
 
-# Debug GPG configuration
-echo -e "${YELLOW}Checking GPG configuration inside the Docker container...${NC}"
-docker run --rm \
-    -v "$(pwd):/workspace" \
-    -v "$HOME/.gnupg:/root/.gnupg:rw" \
-    "${DOCKER_IMAGE_SIGNING}" bash -c "
-    gpg --list-keys;
-    gpg --list-secret-keys;
-"
+    # Ensure required files are present
+    REQUIRED_FILES=("${CHANGES_FILE}" "${BUILDINFO_FILE}")
+    for FILE in "${REQUIRED_FILES[@]}"; do
+        if [ ! -f "${FILE}" ]; then
+            echo -e "${RED}Error: Required file ${FILE} not found.${NC}"
+            exit 1
+        fi
+    done
 
-# Sign the .changes file
-echo -e "${GREEN}Signing ${CHANGES_FILE} with GPG key ${GPG_KEY_ID}...${NC}"
-docker run --rm \
-    -v "$(pwd):/workspace" \
-    -v "$HOME/.gnupg:/root/.gnupg:rw" \
-    -e "GPG_KEY_ID=${GPG_KEY_ID}" \
-    -e "GPG_PASSPHRASE=${GPG_PASSPHRASE}" \
-    "${DOCKER_IMAGE_SIGNING}" bash -c "
-    debsign-helper /workspace/${CHANGES_FILE};
-    echo 'Signed .changes file:';
-    cat /workspace/${CHANGES_FILE};
-"
-echo -e "${GREEN}Successfully signed ${CHANGES_FILE}.${NC}"
+    # Build Docker image for signing
+    DOCKER_IMAGE_SIGNING="nginx-torblocker-signing"
+    echo -e "${YELLOW}Building Docker image for signing: ${DOCKER_IMAGE_SIGNING}...${NC}"
+    docker build -t "${DOCKER_IMAGE_SIGNING}" -f Dockerfile.signing .
+    echo -e "${GREEN}Docker image for signing built successfully.${NC}"
 
-# Debug the .changes file
-echo -e "${YELLOW}Inspecting the .changes file...${NC}"
-cat "${CHANGES_FILE}"
+    # Verify GPG configuration inside the Docker container
+    echo -e "${YELLOW}Verifying GPG configuration inside the Docker container...${NC}"
+    docker run --rm \
+        -v "$(pwd)/${BUILD_DIR}:/project/build" \
+        -v "$HOME/.gnupg:/root/.gnupg:rw" \
+        "${DOCKER_IMAGE_SIGNING}" bash -c "
+        gpg --no-auto-check-trustdb --list-keys;
+        gpg --no-auto-check-trustdb --list-secret-keys;
+        gpgconf --list-dirs;
+        gpg-connect-agent /bye;
+    "
 
-# Verify the signature on the .changes file
-echo -e "${YELLOW}Verifying signature on ${CHANGES_FILE} using dpkg-sig...${NC}"
-docker run --rm \
-    -v "$(pwd):/workspace" \
-    "${DOCKER_IMAGE_SIGNING}" bash -c "
-    dpkg-sig --verify /workspace/${CHANGES_FILE};
-"
+    # Debug GPG configuration
+    echo -e "${YELLOW}Checking GPG configuration inside the Docker container...${NC}"
+    docker run --rm \
+        -v "$(pwd)/${BUILD_DIR}:/project/build" \
+        -v "$HOME/.gnupg:/root/.gnupg:rw" \
+        "${DOCKER_IMAGE_SIGNING}" bash -c "
+        gpg --list-keys;
+        gpg --list-secret-keys;
+    "
 
-# Upload to PPA
-echo -e "${YELLOW}Uploading source package to PPA...${NC}"
-docker run --rm \
-    -v "$(pwd):/workspace" \
-    -e "USER=$(whoami)" \
-    "${DOCKER_IMAGE_SIGNING}" bash -c "
-    dput --unchecked ${PPA_NAME} /workspace/${SOURCE_CHANGES_FILE};
-"
-echo -e "${GREEN}Source package uploaded successfully.${NC}"
+    # Sign the .changes file
+    echo -e "${GREEN}Signing ${CHANGES_FILE} with GPG key ${GPG_KEY_ID}...${NC}"
+    docker run --rm \
+        -v "$(pwd)/${BUILD_DIR}:/project" \
+        -v "$HOME/.gnupg:/root/.gnupg:rw" \
+        -e "GPG_KEY_ID=${GPG_KEY_ID}" \
+        -e "GPG_PASSPHRASE=${GPG_PASSPHRASE}" \
+        "${DOCKER_IMAGE_SIGNING}" bash -c "
+        debsign-helper /project/$(basename "${CHANGES_FILE}");
+        echo 'Signed .changes file:';
+        cat /project/$(basename "${CHANGES_FILE}");
+    "
+    echo -e "${GREEN}Successfully signed ${CHANGES_FILE}.${NC}"
+
+    # Debug the .changes file
+    echo -e "${YELLOW}Inspecting the .changes file...${NC}"
+    cat "${CHANGES_FILE}"
+
+    # Verify the signature on the .changes file
+    echo -e "${YELLOW}Verifying signature on ${CHANGES_FILE} using dpkg-sig...${NC}"
+    docker run --rm \
+        -v "$(pwd)/${BUILD_DIR}:/project" \
+        "${DOCKER_IMAGE_SIGNING}" bash -c "
+        dpkg-sig --verify /project/$(basename "${CHANGES_FILE}");
+    "
+
+    # Upload to PPA
+    echo -e "${YELLOW}Uploading source package to PPA...${NC}"
+    docker run --rm \
+        -v "$(pwd)/${BUILD_DIR}:/project" \
+        -e "USER=$(whoami)" \
+        "${DOCKER_IMAGE_SIGNING}" bash -c "
+        dput --unchecked ${PPA_NAME} /project/$(basename "${SOURCE_CHANGES_FILE}");
+    "
+    echo -e "${GREEN}Source package uploaded successfully.${NC}"
+
+done <<< "$COMPATIBILITY_MATRIX"
+
+echo -e "${GREEN}All combinations processed successfully.${NC}"
