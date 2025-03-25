@@ -92,4 +92,4 @@ RUN DEBIAN_FRONTEND=noninteractive bash -c '\
     fi'
 
 # Set the working directory
-WORKDIR /build
+WORKDIR /project

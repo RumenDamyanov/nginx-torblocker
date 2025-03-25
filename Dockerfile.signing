@@ -1,5 +1,8 @@
 FROM ubuntu:22.04
 
+# Set environment variable to suppress interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Install required dependencies
 RUN apt-get update && apt-get install -y \
     devscripts \
@@ -7,11 +10,16 @@ RUN apt-get update && apt-get install -y \
     gnupg2 \
     gpg-agent \
     expect \
-    pinentry-tty && \
+    pinentry-tty \
+    dpkg-sig \
+    tzdata && \
     rm -rf /var/lib/apt/lists/*
 
 # Add helper script for non-interactive signing
-COPY debsign-helper /usr/local/bin/debsign-helper
+COPY debsign-helper.sh /usr/local/bin/debsign-helper
 
 # Make the helper script executable
 RUN chmod +x /usr/local/bin/debsign-helper
+
+# Add dput configuration
+RUN echo "[DEFAULT]\nhost-main = ppa:rumenx/nginx-torblocker" > /root/.dput.cf

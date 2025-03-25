@@ -7,14 +7,15 @@ NGINX_SOURCE_URL="https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz"
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"  # Get the absolute path of the script's directory
 WORK_DIR="$PROJECT_ROOT/work_dir"
 DEB_HOST_MULTIARCH="${DEB_HOST_MULTIARCH:-$(dpkg-architecture -qDEB_HOST_MULTIARCH)}"
-BUILD_DIR="$PROJECT_ROOT/obj-${DEB_HOST_MULTIARCH}"
+BUILD_DIR="./build"
 NGINX_BUILD_DIR="/tmp/nginx-build"
 SRCFILE="$PROJECT_ROOT/src/ngx_http_torblocker_module.c"
 SRC_DIR="$PROJECT_ROOT/src"
 NGINX_HEADERS_DIR="$NGINX_BUILD_DIR/nginx-${NGINX_VERSION}/src"
 
 # Create build directory
-mkdir -p "$BUILD_DIR"
+mkdir -p "${BUILD_DIR}"
+rm -rf "${BUILD_DIR:?}"/*
 
 # Check if the source file exists
 if [ -f "$SRCFILE" ]; then

@@ -28,17 +28,8 @@ extract_nginx_headers() {
 
     echo -e "${YELLOW}Extracting Nginx headers for version ${nginx_version}...${NC}"
 
-    mkdir -p "${dest_dir}"
-    local tarball="${dest_dir}/nginx-${nginx_version}.tar.gz"
-    local tmp_dir=$(mktemp -d)
-
-    tar -xzf "${tarball}" -C "${tmp_dir}"
-
-    # Copy essential headers
-    mkdir -p "${dest_dir}/headers"
-    cp -r "${tmp_dir}/nginx-${nginx_version}/src" "${dest_dir}/headers/"
-
-    rm -rf "${tmp_dir}"
+    mkdir -p "${dest_dir}/headers/nginx-${nginx_version}"
+    tar -xzf "${dest_dir}/nginx-${nginx_version}.tar.gz" -C "${dest_dir}/headers/nginx-${nginx_version}" --strip-components=1
 
     echo -e "${GREEN}Nginx headers extracted successfully.${NC}"
 }

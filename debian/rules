@@ -11,7 +11,23 @@ BUILDDIR = obj-$(DEB_HOST_MULTIARCH)
 
 # Override the build target to use build-module.sh
 override_dh_auto_build:
-	NGINX_VERSION=$(NGINX_VERSION) ./build-module.sh
+	mkdir -p $(BUILDDIR)
+	echo "Current working directory: $(shell pwd)"
+	echo "Using NGINX_VERSION=$(NGINX_VERSION)"
+	echo "Listing Nginx headers:"
+	ls -l /project/headers/nginx-$(NGINX_VERSION)/src/core
+	gcc -c -fPIC \
+		-I/project/headers/nginx-$(NGINX_VERSION)/src/core \
+		-I/project/headers/nginx-$(NGINX_VERSION)/src/event \
+		-I/project/headers/nginx-$(NGINX_VERSION)/src/event/modules \
+		-I/project/headers/nginx-$(NGINX_VERSION)/src/os/unix \
+		-I/project/headers/nginx-$(NGINX_VERSION)/objs \
+		-I/project/headers/nginx-$(NGINX_VERSION)/src/http \
+		-I/project/headers/nginx-$(NGINX_VERSION)/src/http/modules \
+		-o $(BUILDDIR)/ngx_http_torblocker_module.o /project/src/ngx_http_torblocker_module.c
+	gcc -shared -o $(BUILDDIR)/ngx_http_torblocker_module.so $(BUILDDIR)/ngx_http_torblocker_module.o
+	echo "Listing $(BUILDDIR):"
+	ls -l $(BUILDDIR)
 
 # Override the clean target to clean up build artifacts
 override_dh_auto_clean:
