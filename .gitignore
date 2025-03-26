@@ -23,7 +23,8 @@ obj-arm64-*
 parent/
 dist/
 !dist/.gitkeep
-*-ppa.sh
-debian/changelog
-debian/copyright
-debian/control
+git-*.sh
+deploy-*.sh
+rebuild-*.sh
+clean-*.sh
+packages/

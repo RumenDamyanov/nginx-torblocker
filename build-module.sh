@@ -2,9 +2,9 @@
 set -e
 
 # Define variables
-NGINX_VERSION="${NGINX_VERSION:-1.24.0}"  # Default to 1.24.0 if not set
+NGINX_VERSION="${NGINX_VERSION:-1.24.0}"  # Default if not set
 NGINX_SOURCE_URL="https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz"
-PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"  # Get the absolute path of the script's directory
+PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 WORK_DIR="$PROJECT_ROOT/work_dir"
 DEB_HOST_MULTIARCH="${DEB_HOST_MULTIARCH:-$(dpkg-architecture -qDEB_HOST_MULTIARCH)}"
 BUILD_DIR="./build"
@@ -21,8 +21,7 @@ rm -rf "${BUILD_DIR:?}"/*
 if [ -f "$SRCFILE" ]; then
   echo "Found source file at $SRCFILE"
 else
-  echo "ERROR: Source file '$SRCFILE' not found in the expected location!"
-  echo "Please ensure the file exists in the 'src' directory."
+  echo "ERROR: Source file '$SRCFILE' not found!"
   exit 1
 fi
 
@@ -37,11 +36,11 @@ fi
 echo "Configuring and building Nginx source to generate required headers..."
 cd "$NGINX_BUILD_DIR/nginx-${NGINX_VERSION}"
 ./configure --without-http_rewrite_module --without-http_gzip_module
-make -j$(nproc)
+make -j"$(nproc)"
 
-# Verify that the required headers are generated
+# Verify that ngx_auto_headers.h was generated
 if [ ! -f "objs/ngx_auto_headers.h" ]; then
-  echo "ERROR: ngx_auto_headers.h was not generated. Please check the Nginx build process."
+  echo "ERROR: ngx_auto_headers.h was not generated."
   exit 1
 fi
 
