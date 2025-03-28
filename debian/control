@@ -1,0 +1,17 @@
+Source: nginx-torblocker
+Section: web
+Priority: optional
+Maintainer: Rumen Damyanov <dev@rumenx.com>
+Build-Depends: debhelper-compat (= 13), build-essential
+Standards-Version: 4.6.0
+Homepage: https://github.com/RumenDamyanov/nginx-torblocker
+
+Package: nginx-torblocker
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         nginx (>= 1.18.0)
+Description: Nginx module to block Tor exit nodes
+ This module provides functionality to automatically block
+ requests from Tor exit nodes. It regularly updates its
+ list of exit nodes and supports per-location configuration.

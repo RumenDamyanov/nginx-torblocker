@@ -1,0 +1,66 @@
+nginx-torblocker (1.1.0-1) unstable; urgency=medium
+
+    * Added multi-distro and multi-nginx version support
+    * Enhanced build system for all Ubuntu releases
+    * Improved compatibility with different Nginx versions
+    * Added compatibility matrix for Ubuntu and Nginx versions
+
+ -- Rumen Damyanov <dev@rumenx.com>  Wed, 25 Mar 2025 16:00:00 +0200
+
+nginx-torblocker (1.0.6-1) unstable; urgency=medium
+
+    * Enhanced build system reliability
+    * Improved error reporting
+    * Fixed temporary directory handling
+    * Updated packaging scripts
+
+ -- Rumen Damyanov <dev@rumenx.com>  Mon, 25 Mar 2025 10:00:00 +0200
+
+nginx-torblocker (1.0.5-1) unstable; urgency=medium
+
+    * Use system-provided nginx-dev
+    * Add dependencies from Nginx PPA when needed
+    * Fix permission issues in build script
+    * Improve error handling
+
+ -- Rumen Damyanov <dev@rumenx.com>  Sun, 23 Mar 2025 08:00:00 +0200
+
+nginx-torblocker (1.0.4-1) unstable; urgency=medium
+
+    * Improved configuration validation
+    * Reduced memory footprint
+    * Updated documentation
+
+ -- Rumen Damyanov <dev@rumenx.com>  Fri, 22 Mar 2025 23:30:00 +0200
+
+nginx-torblocker (1.0.3-1) unstable; urgency=medium
+
+    * Enhanced memory management
+    * Optimized Tor exit node list updates
+    * Fixed potential memory leak in configuration parsing
+
+ -- Rumen Damyanov <dev@rumenx.com>  Fri, 22 Mar 2025 23:00:00 +0200
+
+nginx-torblocker (1.0.2-1) unstable; urgency=medium
+
+    * Improved error handling
+    * Updated build system
+    * Added PPA release automation
+
+ -- Rumen Damyanov <dev@rumenx.com>  Fri, 22 Mar 2025 22:00:00 +0200
+
+nginx-torblocker (1.0.1-1) unstable; urgency=medium
+
+    * Fixed multi-architecture support
+    * Added support for both amd64 and arm64 builds
+
+ -- Rumen Damyanov <dev@rumenx.com>  Fri, 22 Mar 2025 21:00:00 +0200
+
+nginx-torblocker (1.0.0-1) unstable; urgency=medium
+
+    * Initial release.
+    * Automatically blocks Tor exit nodes
+    * Supports per-location configuration
+    * Regular updates of Tor exit node list
+
+ -- Rumen Damyanov <dev@rumenx.com>  Fri, 22 Mar 2025 20:22:00 +0200

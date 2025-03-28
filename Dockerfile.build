@@ -1,0 +1,23 @@
+FROM ubuntu:22.04
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    wget \
+    curl \
+    gnupg2 \
+    ca-certificates \
+    zlib1g-dev \
+    libpcre3-dev \
+    libssl-dev \
+    clang \
+    && apt-get clean
+
+# Set working directory
+WORKDIR /build
+
+# Copy the build script into the container
+COPY build-module.sh /build/build-module.sh
+
+# Make the script executable
+RUN chmod +x /build/build-module.sh
