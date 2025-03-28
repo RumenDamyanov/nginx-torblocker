@@ -1,4 +1,4 @@
-name: Build and Test
+name: Test Module Build
 
 on:
   push:
@@ -7,34 +7,22 @@ on:
     branches: [ master ]
 
 jobs:
-  build:
-    runs-on: ubuntu-24.04
-    strategy:
-      matrix:
-        ubuntu-version: [22.04, 24.04]
-        architecture: [amd64, arm64]
+  test:
+    runs-on: ubuntu-latest
+
     steps:
       # Step 1: Checkout the repository
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # Step 2: Set up Docker
-      - name: Set up Docker
-        uses: docker/setup-buildx-action@v2
-
-      # Step 2.1: Rename example-config.env to config.env
-      - name: Rename config file
-        run: mv example-config.env config.env
-
-      # Step 3: Run test-build.sh
-      - name: Run build-sources.sh
+      # Step 2: Install dependencies
+      - name: Install build dependencies
         run: |
-          chmod +x build-sources.sh
-          ./build-sources.sh
+          sudo apt-get update
+          sudo apt-get install -y build-essential wget gcc
 
-      # Step 5: Upload package artifacts
-      - name: Upload package artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: debian-package
-          path: dist/*.deb
+      # Step 3: Run the test script
+      - name: Run test-module.sh
+        run: |
+          chmod +x test-module.sh
+          ./test-module.sh
