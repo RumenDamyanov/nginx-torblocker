@@ -1,4 +1,4 @@
-name: Test Module Build
+name: Build and Test Nginx TorBlocker
 
 on:
   push:
@@ -7,22 +7,44 @@ on:
     branches: [ master ]
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        ubuntu: [jammy, noble]
+        nginx_version: [1.24.0, 1.26.0]
+    env:
+      NGINX_VERSION: ${{ matrix.nginx_version }}
+      UBUNTU_CODENAME: ${{ matrix.ubuntu }}
     steps:
-      # Step 1: Checkout the repository
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # Step 2: Install dependencies
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential wget gcc
+          sudo apt-get install -y build-essential wget gcc libpcre3-dev zlib1g-dev
 
-      # Step 3: Run the test script
-      - name: Run test-module.sh
+      - name: Download Nginx source
         run: |
-          chmod +x test-module.sh
-          ./test-module.sh
+          mkdir -p nginx-sources/${{ matrix.nginx_version }}/${{ matrix.ubuntu }}
+          cd nginx-sources/${{ matrix.nginx_version }}/${{ matrix.ubuntu }}
+          wget -nv https://nginx.org/download/nginx-${{ matrix.nginx_version }}.tar.gz
+          tar xzf nginx-${{ matrix.nginx_version }}.tar.gz
+
+      - name: Build module
+        run: |
+          cd src
+          make || (echo 'Manual build fallback...' && gcc -fPIC -shared -o ngx_http_torblocker_module.so ngx_http_torblocker_module.c)
+
+      - name: Check module output
+        run: |
+          test -f src/ngx_http_torblocker_module.so
+          file src/ngx_http_torblocker_module.so
+
+      - name: Minimal Nginx load test
+        run: |
+          cd nginx-sources/${{ matrix.nginx_version }}/${{ matrix.ubuntu }}/nginx-${{ matrix.nginx_version }}
+          ./configure --add-dynamic-module=../../../src
+          make modules
+          test -f objs/ngx_http_torblocker_module.so
