@@ -62,6 +62,77 @@ http {
 }
 ```
 
+### Advanced Configuration
+
+```nginx
+http {
+    # Configure custom settings
+    torblock on;
+    torblock_list_url "https://check.torproject.org/cgi-bin/TorBulkExitList.py?ip=$remote_addr";
+    torblock_update_interval 600000; # 10 minutes
+
+    # Per-server configuration
+    server {
+        torblock off; # Disable for specific server
+
+        # Per-location configuration
+        location /api {
+            torblock on; # Re-enable for specific location
+        }
+    }
+}
+```
+
+### Block Tor access except for specific IP
+
+```nginx
+http {
+    torblock on;
+
+    # Allow specific IP even if it's a Tor exit node
+    geo $allow_tor {
+        default 0;
+        192.168.1.100 1;
+    }
+
+    server {
+        if ($allow_tor) {
+            set $torblock "off";
+        }
+    }
+}
+```
+
+### Combining Global, Server, and Location Settings
+
+You can enable or disable the module at different levels for flexible access control. For example:
+
+```nginx
+http {
+    torblock off; # Default: allow Tor everywhere
+
+    # Enable Tor blocking only for a specific vhost
+    server {
+        server_name sensitive.example.com;
+        torblock on; # Block Tor for this vhost
+
+        # But allow Tor for a specific location (e.g., public API)
+        location /public-api {
+            torblock off;
+        }
+    }
+
+    # Another vhost with default (Tor allowed)
+    server {
+        server_name open.example.com;
+        # torblock remains off
+    }
+}
+```
+
+**Use case:**
+- This setup is helpful if you want to block Tor for sensitive parts of your site (e.g., admin panels or private content) but allow Tor users to access public APIs or open resources. You can also have some vhosts open to Tor and others protected, all in the same Nginx instance.
+
 ## Debian/Ubuntu PPA (Testing Only)
 
 A PPA is available for convenience, but it is currently **unstable and for testing purposes only**. The recommended way to use the module is to build it yourself from source (see above).
