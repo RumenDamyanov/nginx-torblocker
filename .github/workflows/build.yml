@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         ubuntu: [jammy, noble]
-        nginx_version: [1.24.0, 1.26.0]
+        nginx_version: [1.27.0, 1.28.0]
     env:
       NGINX_VERSION: ${{ matrix.nginx_version }}
       UBUNTU_CODENAME: ${{ matrix.ubuntu }}
