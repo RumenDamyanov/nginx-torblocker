@@ -25,26 +25,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential wget gcc libpcre3-dev zlib1g-dev
 
-      - name: Download Nginx source
+      - name: Download and extract Nginx source
         run: |
           mkdir -p nginx-sources/${{ matrix.nginx_version }}/${{ matrix.ubuntu }}
           cd nginx-sources/${{ matrix.nginx_version }}/${{ matrix.ubuntu }}
           wget -nv https://nginx.org/download/nginx-${{ matrix.nginx_version }}.tar.gz
           tar xzf nginx-${{ matrix.nginx_version }}.tar.gz
 
-      - name: Build module
+      - name: Build dynamic module with Nginx source
         run: |
-          cd src
-          make || (echo 'Manual build fallback...' && gcc -fPIC -shared -o ngx_http_torblocker_module.so ngx_http_torblocker_module.c)
+          cd nginx-sources/${{ matrix.nginx_version }}/${{ matrix.ubuntu }}/nginx-${{ matrix.nginx_version }}
+          SRC_PATH="$GITHUB_WORKSPACE/src"
+          echo "Using src path: $SRC_PATH"
+          ./configure --add-dynamic-module=$SRC_PATH
+          make modules
 
       - name: Check module output
         run: |
-          test -f src/ngx_http_torblocker_module.so
-          file src/ngx_http_torblocker_module.so
-
-      - name: Minimal Nginx load test
-        run: |
-          cd nginx-sources/${{ matrix.nginx_version }}/${{ matrix.ubuntu }}/nginx-${{ matrix.nginx_version }}
-          ./configure --add-dynamic-module=../../../src
-          make modules
-          test -f objs/ngx_http_torblocker_module.so
+          test -f nginx-sources/${{ matrix.nginx_version }}/${{ matrix.ubuntu }}/nginx-${{ matrix.nginx_version }}/objs/ngx_http_torblocker_module.so
+          file nginx-sources/${{ matrix.nginx_version }}/${{ matrix.ubuntu }}/nginx-${{ matrix.nginx_version }}/objs/ngx_http_torblocker_module.so
