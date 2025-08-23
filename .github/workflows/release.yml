@@ -66,15 +66,15 @@ jobs:
       matrix:
         include:
           # Latest 2 Ubuntu LTS versions with latest 2 stable Nginx versions
-          - { ubuntu: "jammy", nginx: "1.26.2", arch: "amd64" }
-          - { ubuntu: "jammy", nginx: "1.27.1", arch: "amd64" }
-          - { ubuntu: "noble", nginx: "1.26.2", arch: "amd64" }
-          - { ubuntu: "noble", nginx: "1.27.1", arch: "amd64" }
+          - { ubuntu: "jammy", nginx: "1.26.3", arch: "amd64" }
+          - { ubuntu: "jammy", nginx: "1.27.5", arch: "amd64" }
+          - { ubuntu: "noble", nginx: "1.26.3", arch: "amd64" }
+          - { ubuntu: "noble", nginx: "1.27.5", arch: "amd64" }
           # ARM64 builds for latest versions
-          - { ubuntu: "jammy", nginx: "1.26.2", arch: "arm64" }
-          - { ubuntu: "jammy", nginx: "1.27.1", arch: "arm64" }
-          - { ubuntu: "noble", nginx: "1.26.2", arch: "arm64" }
-          - { ubuntu: "noble", nginx: "1.27.1", arch: "arm64" }
+          - { ubuntu: "jammy", nginx: "1.26.3", arch: "arm64" }
+          - { ubuntu: "jammy", nginx: "1.27.5", arch: "arm64" }
+          - { ubuntu: "noble", nginx: "1.26.3", arch: "arm64" }
+          - { ubuntu: "noble", nginx: "1.27.5", arch: "arm64" }
 
     name: Build ${{ matrix.ubuntu }}-nginx${{ matrix.nginx }}-${{ matrix.arch }}
 
@@ -96,47 +96,47 @@ jobs:
           else
             PLATFORM="linux/amd64"
           fi
-          
+
           # Create output directory
           mkdir -p output
-          
+
           docker run --rm --platform="$PLATFORM" \
             -v "$PWD:/workspace" \
             -v "$PWD/output:/output" \
             ubuntu:${{ matrix.ubuntu }} \
             bash -c "
               set -e
-              
+
               # Install dependencies
               apt-get update
               apt-get install -y build-essential wget gcc libpcre3-dev zlib1g-dev file
-              
+
               # Download and extract Nginx source
               NGINX_VERSION='${{ matrix.nginx }}'
               SRC_DIR='/workspace/src'
               BUILD_DIR='/tmp/nginx-build'
-              
+
               mkdir -p \"\$BUILD_DIR\"
               cd \"\$BUILD_DIR\"
-              
+
               echo \"Downloading Nginx \$NGINX_VERSION...\"
               wget -nv \"https://nginx.org/download/nginx-\$NGINX_VERSION.tar.gz\"
               tar xzf \"nginx-\$NGINX_VERSION.tar.gz\"
               cd \"nginx-\$NGINX_VERSION\"
-              
+
               echo \"Configuring with torblocker module...\"
               ./configure --add-dynamic-module=\"\$SRC_DIR\"
-              
+
               echo \"Building modules...\"
               make modules
-              
+
               echo \"Checking built module...\"
               file objs/ngx_http_torblocker_module.so
-              
+
               # Copy to output (mounted volume)
               echo \"Copying module to output...\"
               cp objs/ngx_http_torblocker_module.so /output/
-              
+
               echo \"Build completed successfully!\"
             "
 
@@ -144,20 +144,22 @@ jobs:
         run: |
           VERSION="${{ needs.determine-version.outputs.version }}"
           PACKAGE_NAME="nginx-torblocker-${VERSION}-${{ matrix.ubuntu }}-nginx${{ matrix.nginx }}-${{ matrix.arch }}"
-          
+
           mkdir -p "packages/$PACKAGE_NAME"
-          
+
           # Create output directory if it doesn't exist
           mkdir -p output
-          
+
           # Copy built module from output directory
           if [ ! -f "output/ngx_http_torblocker_module.so" ]; then
             echo "Error: Module not found in output directory"
             ls -la output/
             exit 1
           fi
-          
-          cp "output/ngx_http_torblocker_module.so" "packages/$PACKAGE_NAME/"          # Create installation script
+
+          cp "output/ngx_http_torblocker_module.so" "packages/$PACKAGE_NAME/"
+
+          # Create installation script
           cat > "packages/$PACKAGE_NAME/install.sh" << 'EOF'
           #!/bin/bash
           # Nginx TorBlocker Module Installation Script
@@ -280,7 +282,7 @@ jobs:
       matrix:
         ubuntu: [jammy, noble]
         arch: [amd64, arm64]
-        nginx: [1.26.2, 1.27.1]
+        nginx: [1.26.3, 1.27.5]
 
     name: Debian Package ${{ matrix.ubuntu }}-${{ matrix.arch }}-nginx${{ matrix.nginx }}
 
@@ -295,6 +297,7 @@ jobs:
       - name: Build Debian package
         run: |
           VERSION="${{ needs.determine-version.outputs.version }}"
+          NGINX_VERSION="${{ matrix.nginx }}"
 
           # Update version in debian/changelog
           sed -i "1s/.*/nginx-torblocker ($VERSION-1) ${{ matrix.ubuntu }}; urgency=medium/" debian/changelog
@@ -305,11 +308,33 @@ jobs:
             -w /workspace \
             ubuntu:${{ matrix.ubuntu }} \
             bash -c "
+              set -e
               apt-get update
-              apt-get install -y build-essential devscripts debhelper wget nginx-dev
-              dpkg-buildpackage -us -uc -b
+              apt-get install -y build-essential devscripts debhelper wget libpcre3-dev zlib1g-dev pkg-config
+
+              # Download and setup Nginx source for building
+              mkdir -p /project/headers
+              cd /project/headers
+              wget -nv https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz
+              tar xzf nginx-${NGINX_VERSION}.tar.gz
+
+              # Configure nginx to generate proper headers
+              cd nginx-${NGINX_VERSION}
+              ./configure --with-compat
+
+              # Return to workspace and build package
+              cd /workspace
+
+              # Override the NGINX_VERSION variable for debian/rules
+              export NGINX_VERSION=${NGINX_VERSION}              # Build the package
+              dpkg-buildpackage -us -uc -b --build-profiles=nocheck
+
+              # Move .deb files to packages directory
               mkdir -p packages/debian
-              cp ../*.deb packages/debian/ || true
+              find .. -maxdepth 1 -name '*.deb' -exec mv {} packages/debian/ \;
+
+              echo 'Built packages:'
+              ls -la packages/debian/ || echo 'No packages found'
             "
 
       - name: Upload Debian packages
@@ -362,16 +387,16 @@ jobs:
           Pre-compiled modules for popular Ubuntu versions and Nginx releases:
 
           #### Ubuntu 22.04 LTS (Jammy)
-          - **AMD64**: nginx-torblocker-$VERSION-jammy-nginx1.26.0-amd64.tar.gz
-          - **AMD64**: nginx-torblocker-$VERSION-jammy-nginx1.27.0-amd64.tar.gz
-          - **ARM64**: nginx-torblocker-$VERSION-jammy-nginx1.26.0-arm64.tar.gz
-          - **ARM64**: nginx-torblocker-$VERSION-jammy-nginx1.27.0-arm64.tar.gz
+          - **AMD64**: nginx-torblocker-$VERSION-jammy-nginx1.26.3-amd64.tar.gz
+          - **AMD64**: nginx-torblocker-$VERSION-jammy-nginx1.27.5-amd64.tar.gz
+          - **ARM64**: nginx-torblocker-$VERSION-jammy-nginx1.26.3-arm64.tar.gz
+          - **ARM64**: nginx-torblocker-$VERSION-jammy-nginx1.27.5-arm64.tar.gz
 
           #### Ubuntu 24.04 LTS (Noble)
-          - **AMD64**: nginx-torblocker-$VERSION-noble-nginx1.26.0-amd64.tar.gz
-          - **AMD64**: nginx-torblocker-$VERSION-noble-nginx1.27.0-amd64.tar.gz
-          - **ARM64**: nginx-torblocker-$VERSION-noble-nginx1.26.0-arm64.tar.gz
-          - **ARM64**: nginx-torblocker-$VERSION-noble-nginx1.27.0-arm64.tar.gz
+          - **AMD64**: nginx-torblocker-$VERSION-noble-nginx1.26.3-amd64.tar.gz
+          - **AMD64**: nginx-torblocker-$VERSION-noble-nginx1.27.5-amd64.tar.gz
+          - **ARM64**: nginx-torblocker-$VERSION-noble-nginx1.26.3-arm64.tar.gz
+          - **ARM64**: nginx-torblocker-$VERSION-noble-nginx1.27.5-arm64.tar.gz
 
           ### 🐧 Debian Packages (.deb)
 
