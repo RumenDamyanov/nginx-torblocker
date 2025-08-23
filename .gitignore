@@ -55,3 +55,10 @@ obj-*
 /wiki
 /docs
 /scripts
+
+# PPA build artifacts (development only)
+.ppa-build/
+dput.cf
+*.ppa
+*.upload
+gpg-exports/
