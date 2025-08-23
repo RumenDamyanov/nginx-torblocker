@@ -16,6 +16,11 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
