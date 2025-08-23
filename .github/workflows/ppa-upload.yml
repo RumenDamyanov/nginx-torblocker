@@ -1,0 +1,124 @@
+name: PPA Upload (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ppa:
+        description: 'rumenx/nginx-torblocker'
+        required: true
+        type: string
+      ubuntu_releases:
+        description: 'Ubuntu releases (comma-separated)'
+        required: false
+        type: string
+        default: 'jammy,noble'
+      version:
+        description: 'Version override (leave empty to use latest tag)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  ppa-upload:
+    runs-on: ubuntu-latest
+    name: Upload to PPA
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all tags
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            echo "Using provided version: $VERSION"
+          else
+            # Get the latest tag
+            VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -z "$VERSION" ]; then
+              echo "Error: No tags found and no version provided"
+              exit 1
+            fi
+            # Remove 'v' prefix if present
+            VERSION="${VERSION#v}"
+            echo "Using latest tag version: $VERSION"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Checkout tag version
+        run: |
+          echo "📍 Checking out tag v${{ steps.version.outputs.version }} for consistent package source"
+          git checkout "v${{ steps.version.outputs.version }}" || git checkout "${{ steps.version.outputs.version }}"
+
+      - name: Import GPG key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          echo "GPG key imported successfully"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y devscripts dput build-essential debhelper
+
+      - name: Configure dput
+        env:
+          PPA_NAME: ${{ github.event.inputs.ppa }}
+        run: |
+          cat > ~/.dput.cf << EOF
+          [ppa:$PPA_NAME]
+          fqdn = ppa.launchpad.net
+          method = ftp
+          incoming = ~${PPA_NAME%/*}/ubuntu/${PPA_NAME#*/}
+          login = anonymous
+          allow_unsigned_uploads = 0
+          EOF
+
+      - name: Build and upload packages
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PPA_NAME: ${{ github.event.inputs.ppa }}
+          UBUNTU_RELEASES: ${{ github.event.inputs.ubuntu_releases }}
+          DEBFULLNAME: "GitHub Actions"
+          DEBEMAIL: "actions@github.com"
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          echo "📦 Building packages for version: $VERSION"
+
+          # Convert comma-separated releases to array
+          IFS=',' read -ra RELEASES <<< "$UBUNTU_RELEASES"
+
+          for release in "${RELEASES[@]}"; do
+            release=$(echo "$release" | xargs)  # trim whitespace
+            echo "Building for Ubuntu $release..."
+
+            # Create version for this release
+            FULL_VERSION="${VERSION}-1~${release}1"
+
+            # Update changelog
+            cp debian/changelog debian/changelog.backup
+            sed -i "1s/.*/nginx-torblocker ($FULL_VERSION) $release; urgency=medium/" debian/changelog
+
+            # Build source package
+            debuild -S -sa
+
+            # Upload to PPA
+            dput "ppa:$PPA_NAME" "../nginx-torblocker_${FULL_VERSION}_source.changes"
+
+            # Restore changelog
+            mv debian/changelog.backup debian/changelog
+
+            echo "✅ Uploaded $FULL_VERSION to $PPA_NAME"
+          done
+
+      - name: Summary
+        run: |
+          echo "🎉 PPA upload completed for version ${{ steps.version.outputs.version }}!"
+          echo "Monitor builds at: https://launchpad.net/~${{ github.event.inputs.ppa }}/+archive/ubuntu/${{ github.event.inputs.ppa }}/+packages"
