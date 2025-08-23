@@ -1,6 +1,9 @@
 #ifndef _NGX_HTTP_TORBLOCKER_MODULE_H_INCLUDED_
 #define _NGX_HTTP_TORBLOCKER_MODULE_H_INCLUDED_
 
+#define NGX_HTTP_TORBLOCKER_VERSION "1.0.1-beta1"
+#define NGX_HTTP_TORBLOCKER_VERSION_NUM 110000
+
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>

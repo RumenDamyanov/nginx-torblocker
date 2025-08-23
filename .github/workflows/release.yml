@@ -1,0 +1,431 @@
+name: Release Build and Publish
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.1.1)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  determine-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            IS_PRERELEASE="${{ github.event.inputs.prerelease }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+            # Check if it's a pre-release (contains alpha, beta, rc)
+            if [[ "$VERSION" =~ (alpha|beta|rc) ]]; then
+              IS_PRERELEASE="true"
+            else
+              IS_PRERELEASE="false"
+            fi
+          fi
+
+          # Remove 'v' prefix if present
+          VERSION_NO_V="${VERSION#v}"
+
+          echo "version=$VERSION_NO_V" >> $GITHUB_OUTPUT
+          echo "tag=$VERSION" >> $GITHUB_OUTPUT
+          echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+
+          echo "Release version: $VERSION_NO_V"
+          echo "Git tag: $VERSION"
+          echo "Is pre-release: $IS_PRERELEASE"
+
+  build-binaries:
+    needs: determine-version
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Latest 2 Ubuntu LTS versions with latest 2 stable Nginx versions
+          - { ubuntu: "jammy", nginx: "1.26.2", arch: "amd64" }
+          - { ubuntu: "jammy", nginx: "1.27.1", arch: "amd64" }
+          - { ubuntu: "noble", nginx: "1.26.2", arch: "amd64" }
+          - { ubuntu: "noble", nginx: "1.27.1", arch: "amd64" }
+          # ARM64 builds for latest versions
+          - { ubuntu: "jammy", nginx: "1.26.2", arch: "arm64" }
+          - { ubuntu: "jammy", nginx: "1.27.1", arch: "arm64" }
+          - { ubuntu: "noble", nginx: "1.26.2", arch: "arm64" }
+          - { ubuntu: "noble", nginx: "1.27.1", arch: "arm64" }
+
+    name: Build ${{ matrix.ubuntu }}-nginx${{ matrix.nginx }}-${{ matrix.arch }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (for cross-compilation)
+        if: matrix.arch == 'arm64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build in container
+        run: |
+          # Run build in appropriate container
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            PLATFORM="linux/arm64"
+          else
+            PLATFORM="linux/amd64"
+          fi
+          
+          # Create output directory
+          mkdir -p output
+          
+          docker run --rm --platform="$PLATFORM" \
+            -v "$PWD:/workspace" \
+            -v "$PWD/output:/output" \
+            ubuntu:${{ matrix.ubuntu }} \
+            bash -c "
+              set -e
+              
+              # Install dependencies
+              apt-get update
+              apt-get install -y build-essential wget gcc libpcre3-dev zlib1g-dev file
+              
+              # Download and extract Nginx source
+              NGINX_VERSION='${{ matrix.nginx }}'
+              SRC_DIR='/workspace/src'
+              BUILD_DIR='/tmp/nginx-build'
+              
+              mkdir -p \"\$BUILD_DIR\"
+              cd \"\$BUILD_DIR\"
+              
+              echo \"Downloading Nginx \$NGINX_VERSION...\"
+              wget -nv \"https://nginx.org/download/nginx-\$NGINX_VERSION.tar.gz\"
+              tar xzf \"nginx-\$NGINX_VERSION.tar.gz\"
+              cd \"nginx-\$NGINX_VERSION\"
+              
+              echo \"Configuring with torblocker module...\"
+              ./configure --add-dynamic-module=\"\$SRC_DIR\"
+              
+              echo \"Building modules...\"
+              make modules
+              
+              echo \"Checking built module...\"
+              file objs/ngx_http_torblocker_module.so
+              
+              # Copy to output (mounted volume)
+              echo \"Copying module to output...\"
+              cp objs/ngx_http_torblocker_module.so /output/
+              
+              echo \"Build completed successfully!\"
+            "
+
+      - name: Package binary
+        run: |
+          VERSION="${{ needs.determine-version.outputs.version }}"
+          PACKAGE_NAME="nginx-torblocker-${VERSION}-${{ matrix.ubuntu }}-nginx${{ matrix.nginx }}-${{ matrix.arch }}"
+          
+          mkdir -p "packages/$PACKAGE_NAME"
+          
+          # Create output directory if it doesn't exist
+          mkdir -p output
+          
+          # Copy built module from output directory
+          if [ ! -f "output/ngx_http_torblocker_module.so" ]; then
+            echo "Error: Module not found in output directory"
+            ls -la output/
+            exit 1
+          fi
+          
+          cp "output/ngx_http_torblocker_module.so" "packages/$PACKAGE_NAME/"          # Create installation script
+          cat > "packages/$PACKAGE_NAME/install.sh" << 'EOF'
+          #!/bin/bash
+          # Nginx TorBlocker Module Installation Script
+
+          set -e
+
+          NGINX_VERSION="${{ matrix.nginx }}"
+          MODULE_DIR="/usr/lib/nginx/modules"
+          BACKUP_DIR="/usr/lib/nginx/modules/backup"
+
+          echo "Installing nginx-torblocker module for Nginx $NGINX_VERSION..."
+
+          # Check if nginx is installed and version matches
+          if ! command -v nginx >/dev/null 2>&1; then
+              echo "Error: Nginx is not installed"
+              exit 1
+          fi
+
+          INSTALLED_VERSION=$(nginx -v 2>&1 | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)
+          if [ "$INSTALLED_VERSION" != "$NGINX_VERSION" ]; then
+              echo "Warning: Installed Nginx version ($INSTALLED_VERSION) doesn't match module version ($NGINX_VERSION)"
+              echo "This may cause compatibility issues."
+              read -p "Continue anyway? (y/N): " -n 1 -r
+              echo
+              if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                  exit 1
+              fi
+          fi
+
+          # Create backup if module already exists
+          if [ -f "$MODULE_DIR/ngx_http_torblocker_module.so" ]; then
+              echo "Backing up existing module..."
+              mkdir -p "$BACKUP_DIR"
+              cp "$MODULE_DIR/ngx_http_torblocker_module.so" "$BACKUP_DIR/ngx_http_torblocker_module.so.$(date +%Y%m%d_%H%M%S)"
+          fi
+
+          # Install module
+          echo "Installing module to $MODULE_DIR..."
+          sudo mkdir -p "$MODULE_DIR"
+          sudo cp ngx_http_torblocker_module.so "$MODULE_DIR/"
+          sudo chmod 644 "$MODULE_DIR/ngx_http_torblocker_module.so"
+
+          echo "Module installed successfully!"
+          echo ""
+          echo "To use the module, add the following line to the top of your nginx.conf:"
+          echo "load_module modules/ngx_http_torblocker_module.so;"
+          echo ""
+          echo "Then configure the module in your http block:"
+          echo "http {"
+          echo "    torblock on;"
+          echo "}"
+          echo ""
+          echo "Test your configuration with: sudo nginx -t"
+          echo "Reload nginx with: sudo systemctl reload nginx"
+          EOF
+
+          chmod +x "packages/$PACKAGE_NAME/install.sh"
+
+          # Create README
+          cat > "packages/$PACKAGE_NAME/README.md" << EOF
+          # Nginx TorBlocker Module v${{ needs.determine-version.outputs.version }}
+
+          **Target Platform:** Ubuntu ${{ matrix.ubuntu }} (${{ matrix.arch }})
+          **Nginx Version:** ${{ matrix.nginx }}
+          **Module Version:** ${{ needs.determine-version.outputs.version }}
+
+          ## Installation
+
+          1. Run the installation script:
+             \`\`\`bash
+             sudo ./install.sh
+             \`\`\`
+
+          2. Add to your nginx.conf:
+             \`\`\`nginx
+             load_module modules/ngx_http_torblocker_module.so;
+             \`\`\`
+
+          3. Configure the module:
+             \`\`\`nginx
+             http {
+                 torblock on;
+             }
+             \`\`\`
+
+          4. Test and reload:
+             \`\`\`bash
+             sudo nginx -t
+             sudo systemctl reload nginx
+             \`\`\`
+
+          ## Documentation
+
+          Complete documentation is available at:
+          https://github.com/RumenDamyanov/nginx-torblocker/wiki
+
+          ## Support
+
+          - Report issues: https://github.com/RumenDamyanov/nginx-torblocker/issues
+          - Community discussions: https://github.com/RumenDamyanov/nginx-torblocker/discussions
+          EOF
+
+          # Create archive
+          cd packages
+          tar czf "$PACKAGE_NAME.tar.gz" "$PACKAGE_NAME"
+
+          echo "Package created: packages/$PACKAGE_NAME.tar.gz"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nginx-torblocker-${{ matrix.ubuntu }}-nginx${{ matrix.nginx }}-${{ matrix.arch }}
+          path: packages/*.tar.gz
+          retention-days: 30
+
+  build-debian-packages:
+    needs: determine-version
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ubuntu: [jammy, noble]
+        arch: [amd64, arm64]
+        nginx: [1.26.2, 1.27.1]
+
+    name: Debian Package ${{ matrix.ubuntu }}-${{ matrix.arch }}-nginx${{ matrix.nginx }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        if: matrix.arch == 'arm64'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build Debian package
+        run: |
+          VERSION="${{ needs.determine-version.outputs.version }}"
+
+          # Update version in debian/changelog
+          sed -i "1s/.*/nginx-torblocker ($VERSION-1) ${{ matrix.ubuntu }}; urgency=medium/" debian/changelog
+
+          # Build package in container
+          docker run --rm --platform=linux/${{ matrix.arch }} \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            ubuntu:${{ matrix.ubuntu }} \
+            bash -c "
+              apt-get update
+              apt-get install -y build-essential devscripts debhelper wget nginx-dev
+              dpkg-buildpackage -us -uc -b
+              mkdir -p packages/debian
+              cp ../*.deb packages/debian/ || true
+            "
+
+      - name: Upload Debian packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: debian-packages-${{ matrix.ubuntu }}-${{ matrix.arch }}-nginx${{ matrix.nginx }}
+          path: packages/debian/*.deb
+          retention-days: 30
+
+  create-release:
+    needs: [determine-version, build-binaries, build-debian-packages]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Organize release assets
+        run: |
+          mkdir -p release-assets
+
+          # Copy binary packages
+          find release-artifacts -name "*.tar.gz" -exec cp {} release-assets/ \;
+
+          # Copy Debian packages
+          find release-artifacts -name "*.deb" -exec cp {} release-assets/ \;
+
+          # Create checksums
+          cd release-assets
+          sha256sum * > SHA256SUMS
+
+          echo "Release assets:"
+          ls -la
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          VERSION="${{ needs.determine-version.outputs.version }}"
+
+          cat > release_notes.md << EOF
+          ## Nginx TorBlocker v$VERSION
+
+          ### 📦 Binary Packages
+
+          Pre-compiled modules for popular Ubuntu versions and Nginx releases:
+
+          #### Ubuntu 22.04 LTS (Jammy)
+          - **AMD64**: nginx-torblocker-$VERSION-jammy-nginx1.26.0-amd64.tar.gz
+          - **AMD64**: nginx-torblocker-$VERSION-jammy-nginx1.27.0-amd64.tar.gz
+          - **ARM64**: nginx-torblocker-$VERSION-jammy-nginx1.26.0-arm64.tar.gz
+          - **ARM64**: nginx-torblocker-$VERSION-jammy-nginx1.27.0-arm64.tar.gz
+
+          #### Ubuntu 24.04 LTS (Noble)
+          - **AMD64**: nginx-torblocker-$VERSION-noble-nginx1.26.0-amd64.tar.gz
+          - **AMD64**: nginx-torblocker-$VERSION-noble-nginx1.27.0-amd64.tar.gz
+          - **ARM64**: nginx-torblocker-$VERSION-noble-nginx1.26.0-arm64.tar.gz
+          - **ARM64**: nginx-torblocker-$VERSION-noble-nginx1.27.0-arm64.tar.gz
+
+          ### 🐧 Debian Packages (.deb)
+
+          Native .deb packages for Ubuntu systems (install with \`dpkg -i\`).
+
+          ### 📋 Installation
+
+          1. **Download** the appropriate package for your system
+          2. **Extract**: \`tar xzf nginx-torblocker-*.tar.gz\`
+          3. **Install**: \`sudo ./install.sh\`
+          4. **Configure**: Add \`load_module modules/ngx_http_torblocker_module.so;\` to nginx.conf
+
+          ### 📖 Documentation
+
+          - **[Installation Guide](https://github.com/RumenDamyanov/nginx-torblocker/wiki/Installation-Guide)**
+          - **[Configuration Reference](https://github.com/RumenDamyanov/nginx-torblocker/wiki/Configuration-Reference)**
+          - **[Complete Wiki](https://github.com/RumenDamyanov/nginx-torblocker/wiki)**
+
+          ### 🔐 Verification
+
+          Verify package integrity with SHA256SUMS:
+          \`\`\`bash
+          sha256sum -c SHA256SUMS
+          \`\`\`
+
+          ### 💬 Support
+
+          - **Issues**: [GitHub Issues](https://github.com/RumenDamyanov/nginx-torblocker/issues)
+          - **Discussions**: [GitHub Discussions](https://github.com/RumenDamyanov/nginx-torblocker/discussions)
+          - **Documentation**: [Project Wiki](https://github.com/RumenDamyanov/nginx-torblocker/wiki)
+          EOF
+
+          echo "release_notes<<EOF" >> $GITHUB_OUTPUT
+          cat release_notes.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.determine-version.outputs.tag }}
+          name: "nginx-torblocker ${{ needs.determine-version.outputs.version }}"
+          body: ${{ steps.release_notes.outputs.release_notes }}
+          prerelease: ${{ needs.determine-version.outputs.is_prerelease }}
+          files: |
+            release-assets/*
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update latest release info
+        if: needs.determine-version.outputs.is_prerelease == 'false'
+        run: |
+          # Update VERSION file for stable releases
+          echo "${{ needs.determine-version.outputs.version }}" > VERSION
+
+          # Could commit back to repository if needed
+          echo "Stable release ${{ needs.determine-version.outputs.version }} created"

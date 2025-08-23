@@ -45,6 +45,8 @@ A simple Nginx module to block access from Tor exit nodes.
 
 📖 **For detailed build instructions and installation guides, see the [Building from Source](https://github.com/RumenDamyanov/nginx-torblocker/wiki/Building-from-Source) and [Installation Guide](https://github.com/RumenDamyanov/nginx-torblocker/wiki/Installation-Guide) wiki pages.**
 
+💾 **Pre-built packages are available on the [Releases page](https://github.com/RumenDamyanov/nginx-torblocker/releases) for Ubuntu 22.04/24.04 with various Nginx versions.**
+
 ### Prerequisites
 
 - **Nginx installed** on your system
