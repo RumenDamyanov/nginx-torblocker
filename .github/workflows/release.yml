@@ -439,7 +439,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.determine-version.outputs.tag }}
           name: "nginx-torblocker ${{ needs.determine-version.outputs.version }}"
@@ -448,8 +448,7 @@ jobs:
           files: |
             release-assets/*
           generate_release_notes: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update latest release info
         if: needs.determine-version.outputs.is_prerelease == 'false'
