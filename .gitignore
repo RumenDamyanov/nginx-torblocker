@@ -50,3 +50,7 @@ obj-*
 /.development/
 .module_path
 /.vscode/
+/.ai
+/vendor
+/wiki
+/docs
