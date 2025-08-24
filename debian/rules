@@ -27,14 +27,36 @@ override_dh_auto_build:
 			-o /workspace/$(BUILDDIR)/ngx_http_torblocker_module.o \
 			/workspace/src/ngx_http_torblocker_module.c; \
 	else \
-		echo "Building with system nginx-dev using configure..."; \
-		NGINX_SRC="/usr/share/nginx/src"; \
+		echo "Building with system nginx-dev headers..."; \
 		MODULE_PATH="$$(pwd)/src"; \
 		BUILD_DIR="$$(pwd)/$(BUILDDIR)"; \
-		cd $$NGINX_SRC && \
-		./configure --add-dynamic-module=$$MODULE_PATH --with-compat && \
-		make modules && \
-		cp objs/ngx_http_torblocker_module.so $$BUILD_DIR/; \
+		echo "Finding nginx headers and configuration..."; \
+		echo "Checking for nginx header directories:"; \
+		find /usr/include -name "*nginx*" -type d 2>/dev/null || echo "No nginx directories found in /usr/include"; \
+		NGINX_INCLUDES=""; \
+		for dir in /usr/include/nginx /usr/include/nginx/src/core /usr/include/nginx/src/event /usr/include/nginx/src/event/modules /usr/include/nginx/src/os/unix /usr/include/nginx/src/http /usr/include/nginx/src/http/modules; do \
+			if [ -d "$$dir" ]; then \
+				echo "Found directory: $$dir"; \
+				NGINX_INCLUDES="$$NGINX_INCLUDES -I$$dir"; \
+			else \
+				echo "Directory not found: $$dir"; \
+			fi; \
+		done; \
+		echo "Using includes: $$NGINX_INCLUDES"; \
+		echo "Module source file: $$MODULE_PATH/ngx_http_torblocker_module.c"; \
+		[ -f "$$MODULE_PATH/ngx_http_torblocker_module.c" ] && echo "Module source exists" || echo "Module source missing!"; \
+		echo "Compiling module..."; \
+		if gcc -shared -fPIC \
+			$$NGINX_INCLUDES \
+			$$(pkg-config --cflags libpcre2-8 2>/dev/null || echo "-I/usr/include/pcre2") \
+			-DNGX_HTTP_HEADERS \
+			-o $$BUILD_DIR/ngx_http_torblocker_module.so \
+			$$MODULE_PATH/ngx_http_torblocker_module.c; then \
+			echo "Compilation successful"; \
+		else \
+			echo "Compilation failed!"; \
+			exit 1; \
+		fi; \
 	fi
 
 	# For release workflow, create the shared library from the object file

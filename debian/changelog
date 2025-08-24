@@ -1,3 +1,21 @@
+nginx-torblocker (1.0.1~beta8-1) unstable; urgency=medium
+
+    * Fixed PPA build system to use direct compilation
+    * Replaced nginx configure/make with direct gcc compilation
+    * Added comprehensive header path detection
+    * Improved build debugging and error handling
+
+ -- Rumen Damyanov <dev@rumenx.com>  Sat, 24 Aug 2025 12:00:00 +0300
+
+nginx-torblocker (1.0.1~beta7-1) unstable; urgency=medium
+
+    * Fixed PPA build system for Ubuntu 24.04+ compatibility
+    * Added build-essential dependency for C compiler
+    * Fixed nginx source permissions in build environment
+    * Improved debian/rules for system nginx-dev package usage
+
+ -- Rumen Damyanov <dev@rumenx.com>  Sat, 24 Aug 2025 12:00:00 +0300
+
 nginx-torblocker (1.1.0-1) unstable; urgency=medium
 
     * Added multi-distro and multi-nginx version support
