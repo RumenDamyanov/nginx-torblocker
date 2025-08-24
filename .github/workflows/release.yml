@@ -1,14 +1,11 @@
 name: Release Build and Publish
 
 on:
-  push:
-    tags:
-      - 'v*.*.*'
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Release version (e.g., v1.1.1)'
-        required: true
+      tag:
+        description: 'Git tag to release (leave empty for latest tag)'
+        required: false
         type: string
       prerelease:
         description: 'Mark as pre-release'
@@ -35,33 +32,56 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all tags
 
       - name: Determine version
         id: version
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-            IS_PRERELEASE="${{ github.event.inputs.prerelease }}"
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            GIT_TAG="${{ github.event.inputs.tag }}"
+            echo "Using provided tag: $GIT_TAG"
           else
-            VERSION="${GITHUB_REF#refs/tags/}"
-            # Check if it's a pre-release (contains alpha, beta, rc)
-            if [[ "$VERSION" =~ (alpha|beta|rc) ]]; then
-              IS_PRERELEASE="true"
-            else
-              IS_PRERELEASE="false"
+            # Get the latest tag
+            GIT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -z "$GIT_TAG" ]; then
+              echo "Error: No tags found and no tag provided"
+              exit 1
             fi
+            echo "Using latest tag: $GIT_TAG"
           fi
 
-          # Remove 'v' prefix if present
-          VERSION_NO_V="${VERSION#v}"
+          # Verify tag exists
+          if ! git rev-parse "$GIT_TAG" >/dev/null 2>&1; then
+            echo "Error: Tag '$GIT_TAG' does not exist"
+            echo "Available tags:"
+            git tag -l --sort=-version:refname | head -10
+            exit 1
+          fi
+
+          # Check if it's a pre-release (contains alpha, beta, rc) or manual override
+          IS_PRERELEASE="${{ github.event.inputs.prerelease }}"
+          if [[ "$IS_PRERELEASE" != "true" ]] && [[ "$GIT_TAG" =~ (alpha|beta|rc) ]]; then
+            IS_PRERELEASE="true"
+            echo "Auto-detected pre-release from tag name: $GIT_TAG"
+          fi
+
+          # Remove 'v' prefix if present for version
+          VERSION_NO_V="${GIT_TAG#v}"
 
           echo "version=$VERSION_NO_V" >> $GITHUB_OUTPUT
-          echo "tag=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$GIT_TAG" >> $GITHUB_OUTPUT
           echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
 
           echo "Release version: $VERSION_NO_V"
-          echo "Git tag: $VERSION"
+          echo "Git tag: $GIT_TAG"
           echo "Is pre-release: $IS_PRERELEASE"
+
+      - name: Checkout tag
+        run: |
+          echo "📍 Checking out tag ${{ steps.version.outputs.tag }}"
+          git checkout "${{ steps.version.outputs.tag }}"
+          echo "✅ Checked out tag ${{ steps.version.outputs.tag }}"
 
   build-binaries:
     needs: determine-version
@@ -90,6 +110,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all tags
+
+      - name: Checkout tag
+        run: |
+          echo "📍 Checking out tag ${{ needs.determine-version.outputs.tag }}"
+          git checkout "${{ needs.determine-version.outputs.tag }}"
+          echo "✅ Checked out tag ${{ needs.determine-version.outputs.tag }}"
 
       - name: Set up QEMU (for cross-compilation)
         if: matrix.arch == 'arm64'
@@ -298,6 +326,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all tags
+
+      - name: Checkout tag
+        run: |
+          echo "📍 Checking out tag ${{ needs.determine-version.outputs.tag }}"
+          git checkout "${{ needs.determine-version.outputs.tag }}"
+          echo "✅ Checked out tag ${{ needs.determine-version.outputs.tag }}"
 
       - name: Set up QEMU
         if: matrix.arch == 'arm64'
@@ -363,6 +399,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all tags
+
+      - name: Checkout tag
+        run: |
+          echo "📍 Checking out tag ${{ needs.determine-version.outputs.tag }}"
+          git checkout "${{ needs.determine-version.outputs.tag }}"
+          echo "✅ Checked out tag ${{ needs.determine-version.outputs.tag }}"
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -463,11 +507,9 @@ jobs:
           generate_release_notes: false
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update latest release info
-        if: needs.determine-version.outputs.is_prerelease == 'false'
+      - name: Release summary
         run: |
-          # Update VERSION file for stable releases
-          echo "${{ needs.determine-version.outputs.version }}" > VERSION
-
-          # Could commit back to repository if needed
-          echo "Stable release ${{ needs.determine-version.outputs.version }} created"
+          echo "🎉 Release ${{ needs.determine-version.outputs.tag }} created successfully!"
+          echo "📋 Version: ${{ needs.determine-version.outputs.version }}"
+          echo "🏷️ Tag: ${{ needs.determine-version.outputs.tag }}"
+          echo "🔖 Pre-release: ${{ needs.determine-version.outputs.is_prerelease }}"
