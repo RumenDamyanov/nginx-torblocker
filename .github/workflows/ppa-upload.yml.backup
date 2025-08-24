@@ -8,6 +8,10 @@ on:
         required: false
         type: string
         default: 'noble,plucky'
+      nginx_snapshot_version:
+        description: 'Vendored nginx snapshot version override (optional)'
+        required: false
+        type: string
       version:
         description: 'Version override (leave empty to use latest tag)'
         required: false
@@ -125,7 +129,36 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y devscripts dput debhelper build-essential gcc pkg-config nginx-dev libpcre2-dev zlib1g-dev libssl-dev
+          sudo apt-get install -y devscripts dput debhelper build-essential gcc pkg-config curl libpcre2-dev zlib1g-dev libssl-dev
+
+      - name: Ensure vendored nginx snapshot present
+        env:
+          SNAP_VER_INPUT: ${{ github.event.inputs.nginx_snapshot_version }}
+        run: |
+          SNAP_VER="${SNAP_VER_INPUT:-}" || true
+          if [ -n "$SNAP_VER" ]; then
+            echo "Using override snapshot version: $SNAP_VER"
+          else
+            # Try to read default from debian/rules
+            SNAP_VER=$(grep -E 'DEFAULT_NGX_SNAPSHOT_VER *:=' debian/rules | head -1 | awk '{print $3}')
+            echo "Detected default snapshot version from debian/rules: $SNAP_VER"
+          fi
+          export SNAP_VER
+          echo "SNAP_VER=$SNAP_VER" >> $GITHUB_ENV
+          if [ ! -d "nginx-headers/$SNAP_VER/src/core" ]; then
+            echo "Snapshot nginx-headers/$SNAP_VER missing. Generating..."
+            if [ ! -x scripts/update-nginx-headers.sh ]; then
+              echo "Error: scripts/update-nginx-headers.sh not found or not executable" >&2
+              exit 1
+            fi
+            bash scripts/update-nginx-headers.sh "$SNAP_VER"
+            # Add generated snapshot to git index to ensure inclusion in source orig tarball
+            git add "nginx-headers/$SNAP_VER"
+          else
+            echo "Snapshot present: nginx-headers/$SNAP_VER"
+          fi
+          # Export for debuild
+          echo "NGINX_SNAPSHOT_VER=$SNAP_VER" >> $GITHUB_ENV
 
       - name: Configure dput
         run: |
@@ -149,6 +182,7 @@ jobs:
           echo "📦 Building packages for git version: $GIT_VERSION"
           echo "📦 Using Debian version: $DEBIAN_VERSION"
           echo "🔑 Using GPG Key ID: $GPG_KEY_ID"
+          echo "🧩 Using nginx snapshot version: $NGINX_SNAPSHOT_VER"
 
           # Convert comma-separated releases to array
           IFS=',' read -ra RELEASES <<< "$UBUNTU_RELEASES"
@@ -220,7 +254,7 @@ jobs:
             echo "  DEBFULLNAME: $DEBFULLNAME"
             echo "  DEBUILD_DPKG_BUILDPACKAGE_OPTS: $DEBUILD_DPKG_BUILDPACKAGE_OPTS"
 
-            if debuild -S -sa; then
+            if NGINX_SNAPSHOT_VER="$NGINX_SNAPSHOT_VER" debuild -S -sa; then
               echo "✅ Source package built successfully"
             else
               echo "❌ Failed to build source package for $FULL_VERSION"
