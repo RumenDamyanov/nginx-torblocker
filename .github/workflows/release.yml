@@ -307,6 +307,9 @@ jobs:
           # Update version in debian/changelog
           sed -i "1s/.*/nginx-torblocker ($VERSION-1) ${{ matrix.ubuntu }}; urgency=medium/" debian/changelog
 
+          # Remove nginx-dev dependency for release builds (we build from source)
+          sed -i 's/nginx-dev, //g' debian/control
+
           # Build package in container
           docker run --rm --platform=linux/${{ matrix.arch }} \
             -v "$PWD:/workspace" \
@@ -315,7 +318,7 @@ jobs:
             bash -c "
               set -e
               apt-get update
-              apt-get install -y build-essential devscripts debhelper wget libpcre3-dev zlib1g-dev pkg-config
+              apt-get install -y build-essential devscripts debhelper wget libpcre2-dev zlib1g-dev libssl-dev pkg-config
 
               # Download and setup Nginx source for building
               mkdir -p /project/headers

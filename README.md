@@ -311,9 +311,61 @@ The nginx-torblocker module brings this concept into the modern era with several
 
 This refined approach allows for sophisticated access control policies that weren't possible with the original script, making it suitable for complex hosting environments where different sites may have different security requirements.
 
-## Debian/Ubuntu PPA (Testing Only)
+## Debian/Ubuntu PPA
 
-A PPA is available for convenience, but it is currently **unstable and for testing purposes only**. The recommended way to use the module is to build it yourself from source (see above).
+[![PPA Status](https://img.shields.io/badge/PPA-rumenx%2Fnginx--torblocker-blue)](https://launchpad.net/~rumenx/+archive/ubuntu/nginx-torblocker)
+
+An Ubuntu PPA (Personal Package Archive) is available for convenient installation on Ubuntu systems. The PPA provides pre-built packages for:
+
+- **Ubuntu 22.04 LTS (Jammy)**
+- **Ubuntu 24.04 LTS (Noble)**
+
+### Installation from PPA
+
+```bash
+# Add the PPA repository
+sudo add-apt-repository ppa:rumenx/nginx-torblocker
+
+# Update package list
+sudo apt update
+
+# Install the nginx-torblocker module
+sudo apt install nginx-torblocker
+```
+
+### Loading the Module
+
+After installation, add to the top of your `/etc/nginx/nginx.conf`:
+
+```nginx
+load_module modules/ngx_http_torblocker_module.so;
+```
+
+Then reload nginx:
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### Package Information
+
+- **Package name**: `nginx-torblocker`
+- **Installation path**: `/usr/lib/nginx/modules/ngx_http_torblocker_module.so`
+- **Dependencies**: Automatically installs required nginx version
+- **Updates**: Follow semantic versioning (new releases update the PPA)
+
+### Current Status
+
+⚠️ **Beta Status**: The PPA is currently in beta testing. While functional, it may have occasional build issues as we refine the packaging process.
+
+For production use, we recommend [building from source](#quick-build-instructions) until the PPA reaches stable status.
+
+### Getting Help
+
+- **Build logs**: [View on Launchpad](https://launchpad.net/~rumenx/+archive/ubuntu/nginx-torblocker/+packages)
+- **Issues**: Report PPA-specific issues in our [GitHub Issues](https://github.com/RumenDamyanov/nginx-torblocker/issues)
+- **Community**: Join discussions at [GitHub Discussions](https://github.com/RumenDamyanov/nginx-torblocker/discussions)
 
 ## Contributing
 

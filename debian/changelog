@@ -56,11 +56,16 @@ nginx-torblocker (1.0.1-1) unstable; urgency=medium
 
  -- Rumen Damyanov <dev@rumenx.com>  Fri, 22 Mar 2025 21:00:00 +0200
 
-nginx-torblocker (1.0.0-1) unstable; urgency=medium
+nginx-torblocker (1.1.0-2) jammy; urgency=medium
 
-    * Initial release.
-    * Automatically blocks Tor exit nodes
-    * Supports per-location configuration
-    * Regular updates of Tor exit node list
+  * Fix build dependencies for PPA builds
+  * Use system nginx-dev headers instead of downloading source
+  * Add proper pkg-config and libpcre2-dev dependencies
 
- -- Rumen Damyanov <dev@rumenx.com>  Fri, 22 Mar 2025 20:22:00 +0200
+ -- Rumen Damyanov <rumen@example.com>  Fri, 23 Aug 2025 12:00:00 +0000
+
+nginx-torblocker (1.1.0-1) jammy; urgency=medium
+
+  * Package for Ubuntu Jammy
+
+ -- Rumen Damyanov <rumen@example.com>  Thu, 22 Aug 2025 10:00:00 +0000

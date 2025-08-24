@@ -3,10 +3,6 @@ name: PPA Upload (Manual)
 on:
   workflow_dispatch:
     inputs:
-      ppa:
-        description: 'rumenx/nginx-torblocker'
-        required: true
-        type: string
       ubuntu_releases:
         description: 'Ubuntu releases (comma-separated)'
         required: false
@@ -35,62 +31,124 @@ jobs:
         id: version
         run: |
           if [ -n "${{ github.event.inputs.version }}" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-            echo "Using provided version: $VERSION"
+            GIT_VERSION="${{ github.event.inputs.version }}"
+            echo "Using provided version: $GIT_VERSION"
           else
             # Get the latest tag
-            VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-            if [ -z "$VERSION" ]; then
+            GIT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -z "$GIT_VERSION" ]; then
               echo "Error: No tags found and no version provided"
               exit 1
             fi
-            # Remove 'v' prefix if present
-            VERSION="${VERSION#v}"
-            echo "Using latest tag version: $VERSION"
+            # Remove 'v' prefix if present for processing
+            GIT_VERSION="${GIT_VERSION#v}"
+            echo "Using latest tag version: $GIT_VERSION"
           fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          # Keep original version for git operations
+          echo "git_version=$GIT_VERSION" >> $GITHUB_OUTPUT
+
+          # Create Debian-compatible version for packaging
+          DEBIAN_VERSION="$GIT_VERSION"
+          # Convert beta/alpha/rc versions to Debian format
+          if [[ "$GIT_VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-(beta|alpha|rc)([0-9]+)$ ]]; then
+            BASE_VERSION="${BASH_REMATCH[1]}"
+            PRE_TYPE="${BASH_REMATCH[2]}"
+            PRE_NUM="${BASH_REMATCH[3]}"
+            # Convert to Debian pre-release format: 1.0.1~beta4
+            DEBIAN_VERSION="${BASE_VERSION}~${PRE_TYPE}${PRE_NUM}"
+            echo "Converted version $GIT_VERSION to Debian format: $DEBIAN_VERSION"
+          fi
+
+          echo "debian_version=$DEBIAN_VERSION" >> $GITHUB_OUTPUT
 
       - name: Checkout tag version
         run: |
-          echo "📍 Checking out tag v${{ steps.version.outputs.version }} for consistent package source"
-          git checkout "v${{ steps.version.outputs.version }}" || git checkout "${{ steps.version.outputs.version }}"
+          echo "📍 Checking out git tag for version ${{ steps.version.outputs.git_version }}"
+          # Try with 'v' prefix first, then without
+          if git checkout "v${{ steps.version.outputs.git_version }}" 2>/dev/null; then
+            echo "✅ Checked out tag v${{ steps.version.outputs.git_version }}"
+          elif git checkout "${{ steps.version.outputs.git_version }}" 2>/dev/null; then
+            echo "✅ Checked out tag ${{ steps.version.outputs.git_version }}"
+          else
+            echo "❌ Failed to checkout tag ${{ steps.version.outputs.git_version }}"
+            echo "Available tags:"
+            git tag -l | tail -10
+            exit 1
+          fi
 
       - name: Import GPG key
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
+          # Create GPG directories if they don't exist
+          mkdir -p ~/.gnupg
+          chmod 700 ~/.gnupg
+
+          # Import GPG key
           echo "$GPG_PRIVATE_KEY" | gpg --batch --import
-          echo "GPG key imported successfully"
+
+          # Configure GPG for non-interactive use
+          cat >> ~/.gnupg/gpg.conf << EOF
+          use-agent
+          pinentry-mode loopback
+          batch
+          yes
+          EOF
+
+          cat >> ~/.gnupg/gpg-agent.conf << EOF
+          allow-loopback-pinentry
+          default-cache-ttl 86400
+          max-cache-ttl 86400
+          EOF
+
+          # Restart gpg-agent to pick up new config
+          gpgconf --kill gpg-agent
+          gpgconf --launch gpg-agent
+
+          # Get the key ID for later use
+          GPG_KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | head -1 | awk '{print $2}' | cut -d'/' -f2)
+          if [ -z "$GPG_KEY_ID" ]; then
+            echo "❌ Failed to extract GPG key ID"
+            echo "Available secret keys:"
+            gpg --list-secret-keys --keyid-format LONG
+            exit 1
+          fi
+          echo "GPG_KEY_ID=$GPG_KEY_ID" >> $GITHUB_ENV
+
+          # Test GPG signing to ensure it works
+          echo "test" | gpg --batch --yes --passphrase "$GPG_PASSPHRASE" --pinentry-mode loopback --armor --detach-sign > /dev/null
+
+          echo "✅ GPG key imported and configured successfully (Key ID: $GPG_KEY_ID)"
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y devscripts dput build-essential debhelper
+          sudo apt-get install -y devscripts dput debhelper build-essential gcc pkg-config nginx-dev libpcre2-dev zlib1g-dev libssl-dev
 
       - name: Configure dput
-        env:
-          PPA_NAME: ${{ github.event.inputs.ppa }}
         run: |
           cat > ~/.dput.cf << EOF
-          [ppa:$PPA_NAME]
+          [ppa:rumenx/nginx-torblocker]
           fqdn = ppa.launchpad.net
           method = ftp
-          incoming = ~${PPA_NAME%/*}/ubuntu/${PPA_NAME#*/}
+          incoming = ~rumenx/ubuntu/nginx-torblocker
           login = anonymous
           allow_unsigned_uploads = 0
           EOF
 
       - name: Build and upload packages
         env:
-          VERSION: ${{ steps.version.outputs.version }}
-          PPA_NAME: ${{ github.event.inputs.ppa }}
+          DEBIAN_VERSION: ${{ steps.version.outputs.debian_version }}
+          GIT_VERSION: ${{ steps.version.outputs.git_version }}
           UBUNTU_RELEASES: ${{ github.event.inputs.ubuntu_releases }}
-          DEBFULLNAME: "GitHub Actions"
-          DEBEMAIL: "actions@github.com"
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GPG_KEY_ID: ${{ env.GPG_KEY_ID }}
         run: |
-          echo "📦 Building packages for version: $VERSION"
+          echo "📦 Building packages for git version: $GIT_VERSION"
+          echo "📦 Using Debian version: $DEBIAN_VERSION"
+          echo "🔑 Using GPG Key ID: $GPG_KEY_ID"
 
           # Convert comma-separated releases to array
           IFS=',' read -ra RELEASES <<< "$UBUNTU_RELEASES"
@@ -99,26 +157,113 @@ jobs:
             release=$(echo "$release" | xargs)  # trim whitespace
             echo "Building for Ubuntu $release..."
 
-            # Create version for this release
-            FULL_VERSION="${VERSION}-1~${release}1"
+            # Create version for this release using Debian-compatible version
+            FULL_VERSION="${DEBIAN_VERSION}-1~${release}1"
 
-            # Update changelog
+            # Generate automated changelog entry
             cp debian/changelog debian/changelog.backup
-            sed -i "1s/.*/nginx-torblocker ($FULL_VERSION) $release; urgency=medium/" debian/changelog
+
+            # Get git commit messages since last tag for changelog
+            LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+            if [ -n "$LAST_TAG" ]; then
+              COMMIT_MESSAGES=$(git log --oneline ${LAST_TAG}..HEAD --pretty=format:"  * %s" | head -10)
+            else
+              COMMIT_MESSAGES="  * Release version $GIT_VERSION"
+            fi
+
+            # Create new changelog entry
+            # Get GPG identity for changelog
+            GPG_EMAIL=$(gpg --list-secret-keys --with-colons | grep uid | head -1 | cut -d':' -f10 | grep -o '<[^>]*>' | tr -d '<>')
+            GPG_NAME=$(gpg --list-secret-keys --with-colons | grep uid | head -1 | cut -d':' -f10 | sed 's/<.*>//' | xargs)
+
+            {
+              echo "nginx-torblocker ($FULL_VERSION) $release; urgency=medium"
+              echo ""
+              echo "$COMMIT_MESSAGES"
+              echo ""
+              echo " -- $GPG_NAME <$GPG_EMAIL>  $(date -R)"
+              echo ""
+            } > debian/changelog.new
+
+            # Append original changelog
+            cat debian/changelog.backup >> debian/changelog.new
+            mv debian/changelog.new debian/changelog
+
+            echo "📝 Generated changelog entry for $FULL_VERSION:"
+            head -10 debian/changelog
 
             # Build source package
-            debuild -S -sa
+            echo "🔨 Building source package for $FULL_VERSION..."
+
+            # Ensure GPG key ID is available, fallback if needed
+            if [ -z "$GPG_KEY_ID" ]; then
+              echo "⚠️ GPG_KEY_ID not found, extracting from GPG..."
+              GPG_KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | head -1 | awk '{print $2}' | cut -d'/' -f2)
+              echo "🔑 Extracted GPG Key ID: $GPG_KEY_ID"
+            fi
+
+            # Configure debuild environment for signing
+            export DEBSIGN_KEYID="$GPG_KEY_ID"
+            export DEBUILD_DPKG_BUILDPACKAGE_OPTS="-k$GPG_KEY_ID"
+            export GPG_TTY=$(tty || echo "notty")
+
+            # Override the email with the GPG key for signing
+            GPG_EMAIL=$(gpg --list-secret-keys --with-colons | grep uid | head -1 | cut -d':' -f10 | grep -o '<[^>]*>' | tr -d '<>')
+            if [ -n "$GPG_EMAIL" ]; then
+              export DEBEMAIL="$GPG_EMAIL"
+              export DEBFULLNAME="$(gpg --list-secret-keys --with-colons | grep uid | head -1 | cut -d':' -f10 | sed 's/<.*>//' | xargs)"
+            fi
+
+            echo "🔐 Debuild signing configuration:"
+            echo "  DEBSIGN_KEYID: $DEBSIGN_KEYID"
+            echo "  DEBEMAIL: $DEBEMAIL"
+            echo "  DEBFULLNAME: $DEBFULLNAME"
+            echo "  DEBUILD_DPKG_BUILDPACKAGE_OPTS: $DEBUILD_DPKG_BUILDPACKAGE_OPTS"
+
+            if debuild -S -sa; then
+              echo "✅ Source package built successfully"
+            else
+              echo "❌ Failed to build source package for $FULL_VERSION"
+              exit 1
+            fi
+
+            # Verify source package exists
+            SOURCE_CHANGES="../nginx-torblocker_${FULL_VERSION}_source.changes"
+            if [ ! -f "$SOURCE_CHANGES" ]; then
+              echo "❌ Source package not found: $SOURCE_CHANGES"
+              ls -la ../nginx-torblocker_*
+              exit 1
+            fi
 
             # Upload to PPA
-            dput "ppa:$PPA_NAME" "../nginx-torblocker_${FULL_VERSION}_source.changes"
+            echo "📤 Uploading $FULL_VERSION to PPA..."
+            if dput "ppa:rumenx/nginx-torblocker" "$SOURCE_CHANGES"; then
+              echo "✅ Successfully uploaded $FULL_VERSION to rumenx/nginx-torblocker"
+            else
+              echo "❌ Failed to upload $FULL_VERSION"
+              exit 1
+            fi
 
             # Restore changelog
             mv debian/changelog.backup debian/changelog
 
-            echo "✅ Uploaded $FULL_VERSION to $PPA_NAME"
+            echo "✅ Completed upload for $FULL_VERSION"
           done
 
       - name: Summary
         run: |
-          echo "🎉 PPA upload completed for version ${{ steps.version.outputs.version }}!"
-          echo "Monitor builds at: https://launchpad.net/~${{ github.event.inputs.ppa }}/+archive/ubuntu/${{ github.event.inputs.ppa }}/+packages"
+          echo "🎉 PPA upload completed!"
+          echo "📋 Git version: ${{ steps.version.outputs.git_version }}"
+          echo "📋 Debian version: ${{ steps.version.outputs.debian_version }}"
+          echo ""
+          echo "📦 Uploaded packages:"
+          echo "  - Ubuntu Jammy: nginx-torblocker_${{ steps.version.outputs.debian_version }}-1~jammy1"
+          echo "  - Ubuntu Noble: nginx-torblocker_${{ steps.version.outputs.debian_version }}-1~noble1"
+          echo ""
+          echo "🔗 Monitor builds at:"
+          echo "  https://launchpad.net/~rumenx/+archive/ubuntu/nginx-torblocker/+packages"
+          echo ""
+          echo "📥 Install instructions:"
+          echo "  sudo add-apt-repository ppa:rumenx/nginx-torblocker"
+          echo "  sudo apt update"
+          echo "  sudo apt install nginx-torblocker"
