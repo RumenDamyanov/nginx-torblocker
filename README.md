@@ -45,7 +45,7 @@ A simple Nginx module to block access from Tor exit nodes.
 
 📖 **For detailed build instructions and installation guides, see the [Building from Source](https://github.com/RumenDamyanov/nginx-torblocker/wiki/Building-from-Source) and [Installation Guide](https://github.com/RumenDamyanov/nginx-torblocker/wiki/Installation-Guide) wiki pages.**
 
-💾 **Pre-built packages are available on the [Releases page](https://github.com/RumenDamyanov/nginx-torblocker/releases) for Ubuntu 22.04/24.04 with various Nginx versions.**
+💾 **Pre-built packages are available on the [Releases page](https://github.com/RumenDamyanov/nginx-torblocker/releases) for Ubuntu 22.04/24.04 with various Nginx versions. For Ubuntu 24.04+, you can also use our [PPA](#debianubuntu-ppa).**
 
 ### Prerequisites
 
@@ -317,8 +317,10 @@ This refined approach allows for sophisticated access control policies that were
 
 An Ubuntu PPA (Personal Package Archive) is available for convenient installation on Ubuntu systems. The PPA provides pre-built packages for:
 
-- **Ubuntu 22.04 LTS (Jammy)**
-- **Ubuntu 24.04 LTS (Noble)**
+- **Ubuntu 24.04 LTS (Noble)** and newer versions
+- **Ubuntu 25.04 (Plucky)** and newer versions
+
+⚠️ **Ubuntu 22.04 (Jammy) Limitation**: The PPA does not support Ubuntu 22.04 because the required `nginx-dev` package is not available in that version. For Ubuntu 22.04, please use the [manual build instructions](#quick-build-instructions) instead.
 
 ### Installation from PPA
 
@@ -357,9 +359,9 @@ sudo systemctl reload nginx
 
 ### Current Status
 
-⚠️ **Beta Status**: The PPA is currently in beta testing. While functional, it may have occasional build issues as we refine the packaging process.
+⚠️ **Version Support**: The PPA currently supports Ubuntu 24.04 LTS (Noble) and Ubuntu 25.04 (Plucky) and newer versions. For Ubuntu 22.04 (Jammy), please use the [manual build instructions](#quick-build-instructions) as the required `nginx-dev` package is not available in that version.
 
-For production use, we recommend [building from source](#quick-build-instructions) until the PPA reaches stable status.
+For production use, we recommend [building from source](#quick-build-instructions) for maximum compatibility across all Ubuntu versions.
 
 ### Getting Help
 

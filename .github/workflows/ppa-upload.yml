@@ -7,7 +7,7 @@ on:
         description: 'Ubuntu releases (comma-separated)'
         required: false
         type: string
-        default: 'jammy,noble'
+        default: 'noble,plucky'
       version:
         description: 'Version override (leave empty to use latest tag)'
         required: false
@@ -257,8 +257,8 @@ jobs:
           echo "📋 Debian version: ${{ steps.version.outputs.debian_version }}"
           echo ""
           echo "📦 Uploaded packages:"
-          echo "  - Ubuntu Jammy: nginx-torblocker_${{ steps.version.outputs.debian_version }}-1~jammy1"
           echo "  - Ubuntu Noble: nginx-torblocker_${{ steps.version.outputs.debian_version }}-1~noble1"
+          echo "  - Ubuntu Plucky: nginx-torblocker_${{ steps.version.outputs.debian_version }}-1~plucky1"
           echo ""
           echo "🔗 Monitor builds at:"
           echo "  https://launchpad.net/~rumenx/+archive/ubuntu/nginx-torblocker/+packages"

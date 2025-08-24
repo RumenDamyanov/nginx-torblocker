@@ -75,11 +75,15 @@ jobs:
           - { ubuntu: "jammy", nginx: "1.27.5", arch: "amd64" }
           - { ubuntu: "noble", nginx: "1.26.3", arch: "amd64" }
           - { ubuntu: "noble", nginx: "1.27.5", arch: "amd64" }
+          - { ubuntu: "plucky", nginx: "1.26.3", arch: "amd64" }
+          - { ubuntu: "plucky", nginx: "1.27.5", arch: "amd64" }
           # ARM64 builds for latest versions
           - { ubuntu: "jammy", nginx: "1.26.3", arch: "arm64" }
           - { ubuntu: "jammy", nginx: "1.27.5", arch: "arm64" }
           - { ubuntu: "noble", nginx: "1.26.3", arch: "arm64" }
           - { ubuntu: "noble", nginx: "1.27.5", arch: "arm64" }
+          - { ubuntu: "plucky", nginx: "1.26.3", arch: "arm64" }
+          - { ubuntu: "plucky", nginx: "1.27.5", arch: "arm64" }
 
     name: Build ${{ matrix.ubuntu }}-nginx${{ matrix.nginx }}-${{ matrix.arch }}
 
@@ -285,7 +289,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        ubuntu: [jammy, noble]
+        ubuntu: [jammy, noble, plucky]
         arch: [amd64, arm64]
         nginx: [1.26.3, 1.27.5]
 
@@ -405,6 +409,12 @@ jobs:
           - **AMD64**: nginx-torblocker-$VERSION-noble-nginx1.27.5-amd64.tar.gz
           - **ARM64**: nginx-torblocker-$VERSION-noble-nginx1.26.3-arm64.tar.gz
           - **ARM64**: nginx-torblocker-$VERSION-noble-nginx1.27.5-arm64.tar.gz
+
+          #### Ubuntu 25.04 (Plucky)
+          - **AMD64**: nginx-torblocker-$VERSION-plucky-nginx1.26.3-amd64.tar.gz
+          - **AMD64**: nginx-torblocker-$VERSION-plucky-nginx1.27.5-amd64.tar.gz
+          - **ARM64**: nginx-torblocker-$VERSION-plucky-nginx1.26.3-arm64.tar.gz
+          - **ARM64**: nginx-torblocker-$VERSION-plucky-nginx1.27.5-arm64.tar.gz
 
           ### 🐧 Debian Packages (.deb)
 

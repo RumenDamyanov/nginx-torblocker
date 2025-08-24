@@ -9,7 +9,7 @@ BUILDDIR = obj-$(DEB_HOST_MULTIARCH)
 
 override_dh_auto_build:
 	mkdir -p $(BUILDDIR)
-	
+
 	# Check if we're building with downloaded nginx source (release workflow)
 	# or system nginx-dev headers (PPA workflow)
 	if [ -n "$(NGINX_VERSION)" ] && [ -d "/project/headers/nginx-$(NGINX_VERSION)" ]; then \
@@ -27,17 +27,22 @@ override_dh_auto_build:
 			-o /workspace/$(BUILDDIR)/ngx_http_torblocker_module.o \
 			/workspace/src/ngx_http_torblocker_module.c; \
 	else \
-		echo "Building with system nginx-dev headers..."; \
-		gcc -c -fPIC \
-			-I/usr/include/nginx \
-			$$(pkg-config --cflags libpcre2-8) \
-			-o $(BUILDDIR)/ngx_http_torblocker_module.o \
-			src/ngx_http_torblocker_module.c; \
+		echo "Building with system nginx-dev using configure..."; \
+		NGINX_SRC="/usr/share/nginx/src"; \
+		MODULE_PATH="$$(pwd)/src"; \
+		BUILD_DIR="$$(pwd)/$(BUILDDIR)"; \
+		cd $$NGINX_SRC && \
+		./configure --add-dynamic-module=$$MODULE_PATH --with-compat && \
+		make modules && \
+		cp objs/ngx_http_torblocker_module.so $$BUILD_DIR/; \
 	fi
 
-	gcc -shared \
-		-o $(BUILDDIR)/ngx_http_torblocker_module.so \
-		$(BUILDDIR)/ngx_http_torblocker_module.o
+	# For release workflow, create the shared library from the object file
+	if [ -n "$(NGINX_VERSION)" ] && [ -d "/project/headers/nginx-$(NGINX_VERSION)" ]; then \
+		gcc -shared \
+			-o $(BUILDDIR)/ngx_http_torblocker_module.so \
+			$(BUILDDIR)/ngx_http_torblocker_module.o; \
+	fi
 
 	echo "Build completed. Module location:"
 	ls -l $(BUILDDIR)/ngx_http_torblocker_module.so
