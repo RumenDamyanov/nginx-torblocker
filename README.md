@@ -1,3 +1,8 @@
+[![OBS Build Status](https://build.opensuse.org/projects/home:rumenx/packages/nginx-torblocker/badge.svg?type=default)](https://build.opensuse.org/package/show/home:rumenx/nginx-torblocker)
+[![GitHub Release](https://img.shields.io/github/v/release/RumenDamyanov/nginx-torblocker?label=Release)](https://github.com/RumenDamyanov/nginx-torblocker/releases)
+[![License](https://img.shields.io/github/license/RumenDamyanov/nginx-torblocker?label=License)](LICENSE.md)
+[![Platform Support](https://img.shields.io/badge/Platform-Debian%20%7C%20Ubuntu%20%7C%20Fedora%20%7C%20openSUSE%20%7C%20RHEL-blue)](https://build.opensuse.org/package/show/home:rumenx/nginx-torblocker)
+
 # Nginx TorBlocker
 
 A simple Nginx module to block access from Tor exit nodes.
@@ -40,6 +45,97 @@ A simple Nginx module to block access from Tor exit nodes.
 - `src/` — Nginx module source code
 - `debian/` — Packaging files (for building .deb packages)
 - `conf/` — Example configuration
+
+## Installation
+
+### Package Installation (Recommended)
+
+Pre-built packages are available for multiple Linux distributions via the [openSUSE Build Service](https://build.opensuse.org/package/show/home:rumenx/nginx-torblocker).
+
+#### Debian / Ubuntu
+
+```bash
+# Add the repository
+echo "deb http://download.opensuse.org/repositories/home:/rumenx/xUbuntu_24.04/ /" | sudo tee /etc/apt/sources.list.d/nginx-torblocker.list
+
+# Add the repository key
+curl -fsSL https://download.opensuse.org/repositories/home:/rumenx/xUbuntu_24.04/Release.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/nginx-torblocker.gpg > /dev/null
+
+# Update and install
+sudo apt update
+sudo apt install nginx-torblocker
+```
+
+**Supported Versions:**
+- Ubuntu 24.04 (Noble) - Use `xUbuntu_24.04`
+- Ubuntu 22.04 (Jammy) - Use `xUbuntu_22.04`
+- Debian 12 (Bookworm) - Use `Debian_12`
+- Debian 13 (Trixie) - Use `Debian_13`
+
+Replace `xUbuntu_24.04` in the commands above with your distribution version.
+
+#### Fedora
+
+```bash
+# Add the repository
+sudo dnf config-manager --add-repo https://download.opensuse.org/repositories/home:/rumenx/Fedora_41/home:rumenx.repo
+
+# Install the package
+sudo dnf install nginx-torblocker
+```
+
+**Supported Versions:**
+- Fedora 42 - Use `Fedora_42`
+- Fedora 41 - Use `Fedora_41`
+
+#### openSUSE
+
+```bash
+# Add the repository
+sudo zypper addrepo https://download.opensuse.org/repositories/home:/rumenx/openSUSE_Tumbleweed/home:rumenx.repo
+
+# Refresh repositories
+sudo zypper refresh
+
+# Install the package
+sudo zypper install nginx-torblocker
+```
+
+**Supported Versions:**
+- openSUSE Tumbleweed - Use `openSUSE_Tumbleweed`
+- openSUSE Leap 15.6 - Use `openSUSE_Leap_15.6`
+- openSUSE Leap 16.0 - Use `openSUSE_Leap_16.0`
+
+#### RHEL / CentOS / Rocky Linux / AlmaLinux
+
+```bash
+# Add the repository (RHEL 9 example)
+sudo dnf config-manager --add-repo https://download.opensuse.org/repositories/home:/rumenx/RHEL_9/home:rumenx.repo
+
+# Install the package
+sudo dnf install nginx-torblocker
+```
+
+**Supported Versions:**
+- RHEL/CentOS 7 - Use `RHEL_7`
+
+### After Installation
+
+After installing the package, the module will be installed to:
+- **Debian/Ubuntu**: `/usr/lib/nginx/modules/ngx_http_torblocker_module.so`
+- **Fedora/RHEL/openSUSE**: `/usr/lib64/nginx/modules/ngx_http_torblocker_module.so`
+
+Load the module by adding to the top of your `/etc/nginx/nginx.conf`:
+
+```nginx
+load_module modules/ngx_http_torblocker_module.so;
+```
+
+Then restart nginx:
+
+```bash
+sudo systemctl restart nginx
+```
 
 ## Quick Build Instructions
 

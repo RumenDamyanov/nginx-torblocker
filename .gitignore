@@ -12,8 +12,6 @@ debian/debhelper-build-stamp
 debian/files
 config.env
 nginx-torblocker_*
-vendor/*
-!vendor/.gitkeep
 nginx-sources/
 workflow/
 object-x86_64/
@@ -51,7 +49,6 @@ obj-*
 .module_path
 /.vscode/
 /.ai
-/vendor
 /wiki
 /docs
 /scripts
@@ -62,3 +59,7 @@ dput.cf
 *.ppa
 *.upload
 gpg-exports/
+
+# OBS (openSUSE Build Service) directory - keeping structure but ignoring builds
+/.obs/
+/vendor/
