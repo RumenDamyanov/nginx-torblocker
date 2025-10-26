@@ -306,7 +306,7 @@ jobs:
           echo "Package created: packages/$PACKAGE_NAME.tar.gz"
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: nginx-torblocker-${{ matrix.ubuntu }}-nginx${{ matrix.nginx }}-${{ matrix.arch }}
           path: packages/*.tar.gz
@@ -386,7 +386,7 @@ jobs:
             "
 
       - name: Upload Debian packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: debian-packages-${{ matrix.ubuntu }}-${{ matrix.arch }}-nginx${{ matrix.nginx }}
           path: packages/debian/*.deb
