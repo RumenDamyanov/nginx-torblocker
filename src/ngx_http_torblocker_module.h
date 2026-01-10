@@ -9,9 +9,14 @@
 #include <ngx_event_openssl.h>
 #endif
 
+/* Torblock mode values */
+#define NGX_HTTP_TORBLOCKER_OFF   0  /* Allow all traffic (default) */
+#define NGX_HTTP_TORBLOCKER_ON    1  /* Block Tor traffic */
+#define NGX_HTTP_TORBLOCKER_ONLY  2  /* Allow ONLY Tor traffic (block clearnet) */
+
 /* Module configuration structure */
 typedef struct {
-    ngx_flag_t   enabled;           /* Enable/disable Tor blocking */
+    ngx_uint_t   mode;              /* Blocking mode (off/on/only) */
 } ngx_http_torblocker_loc_conf_t;
 
 /* Main configuration for shared state */

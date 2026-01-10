@@ -5,16 +5,20 @@
 
 # Nginx TorBlocker
 
-A simple Nginx module to block access from Tor exit nodes.
+A flexible Nginx module to control access from Tor exit nodes - block them, allow them exclusively, or mix policies.
 
 ## Features
 
-- Blocks requests from Tor exit nodes
+- **Three operation modes:**
+  - `torblock on` - Block Tor exit node traffic
+  - `torblock off` - Allow all traffic (default)
+  - `torblock only` - Allow **only** Tor traffic (block clearnet)
 - **Automatically fetches** the Tor exit node list from URL (no cron jobs needed!)
 - **HTTPS support** for secure list fetching (requires nginx with SSL support)
 - Configurable update interval for automatic list refresh
 - Easy to configure and integrate with Nginx
 - Per-location and per-server configuration
+- Mix policies across different vhosts and paths
 
 ## Documentation & Support
 
@@ -247,9 +251,17 @@ The module **automatically fetches** the Tor exit node list from the Tor Project
 
 | Directive | Context | Default | Description |
 |-----------|---------|---------|-------------|
-| `torblock` | http, server, location | `off` | Enable/disable Tor blocking |
+| `torblock` | http, server, location | `off` | Set mode: `off`, `on`, or `only` |
 | `torblock_list_url` | http | `https://check.torproject.org/torbulkexitlist` | URL for Tor exit node list |
 | `torblock_update_interval` | http | `3600000` | Auto-update interval in ms (1 hour) |
+
+### Mode Values
+
+| Mode | Behavior |
+|------|----------|
+| `off` | Allow all traffic (default) |
+| `on` | Block Tor exit node traffic |
+| `only` | Allow **only** Tor traffic, block clearnet |
 
 **Notes:**
 
@@ -374,6 +386,68 @@ http {
 **Use case:**
 
 - This setup is helpful if you want to block Tor for sensitive parts of your site (e.g., admin panels or private content) but allow Tor users to access public APIs or open resources. You can also have some vhosts open to Tor and others protected, all in the same Nginx instance.
+
+### Tor-Only Mode (Exclusive Tor Access)
+
+Use `torblock only` to allow **only** Tor traffic and block regular (clearnet) connections. This is useful for privacy-focused services or .onion-style endpoints.
+
+```nginx
+http {
+    resolver 1.1.1.1 9.9.9.9;
+
+    # Privacy-focused service - Tor only
+    server {
+        listen 80;
+        server_name private.example.com;
+        torblock only;  # Only Tor users can access
+    }
+
+    # Regular site - allow all
+    server {
+        listen 80;
+        server_name public.example.com;
+        torblock off;  # Everyone can access
+    }
+}
+```
+
+### Mixed Policies (Block, Allow, Tor-Only)
+
+Combine all three modes for maximum flexibility:
+
+```nginx
+http {
+    resolver 1.1.1.1 9.9.9.9;
+    torblock off;  # Default: allow all traffic
+
+    server {
+        listen 80;
+        server_name example.com;
+
+        # Public pages - allow everyone
+        location / {
+            torblock off;
+        }
+
+        # Admin panel - block Tor users
+        location /admin {
+            torblock on;
+        }
+
+        # Whistleblower submission - Tor users only
+        location /secure-submit {
+            torblock only;
+        }
+    }
+}
+```
+
+**Use cases for `torblock only`:**
+
+- Whistleblower or anonymous submission portals
+- Privacy-focused communication endpoints
+- Testing Tor accessibility
+- Services that should only be accessed anonymously
 
 ## Troubleshooting
 

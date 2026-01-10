@@ -1,6 +1,6 @@
 /*
  * nginx-torblocker module
- * Blocks access from Tor exit nodes
+ * Blocks or exclusively allows access from Tor exit nodes
  * Automatically fetches and updates the Tor exit node list from URL (HTTP/HTTPS)
  *
  * Copyright (c) 2025 Rumen Damyanov
@@ -26,6 +26,7 @@ static void *ngx_http_torblocker_create_main_conf(ngx_conf_t *cf);
 static char *ngx_http_torblocker_init_main_conf(ngx_conf_t *cf, void *conf);
 static void *ngx_http_torblocker_create_loc_conf(ngx_conf_t *cf);
 static char *ngx_http_torblocker_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child);
+static char *ngx_http_torblocker_set_mode(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static ngx_int_t ngx_http_torblocker_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_torblocker_check_ip(ngx_http_torblocker_main_conf_t *mcf, ngx_str_t *ip);
 static void ngx_http_torblocker_update_handler(ngx_event_t *ev);
@@ -50,10 +51,10 @@ static ngx_http_torblocker_main_conf_t *ngx_http_torblocker_main_conf;
 static ngx_command_t ngx_http_torblocker_commands[] = {
 
     { ngx_string("torblock"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
-      ngx_conf_set_flag_slot,
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_http_torblocker_set_mode,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_torblocker_loc_conf_t, enabled),
+      0,
       NULL },
 
     { ngx_string("torblock_list_url"),
@@ -100,6 +101,42 @@ ngx_module_t ngx_http_torblocker_module = {
     NULL,                               /* exit master */
     NGX_MODULE_V1_PADDING
 };
+
+/*
+ * Set torblock mode from configuration
+ * Supports: off, on, only
+ */
+static char *
+ngx_http_torblocker_set_mode(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    ngx_http_torblocker_loc_conf_t *lcf = conf;
+    ngx_str_t                      *value;
+
+    if (lcf->mode != NGX_CONF_UNSET_UINT) {
+        return "is duplicate";
+    }
+
+    value = cf->args->elts;
+
+    if (ngx_strcasecmp(value[1].data, (u_char *) "off") == 0) {
+        lcf->mode = NGX_HTTP_TORBLOCKER_OFF;
+
+    } else if (ngx_strcasecmp(value[1].data, (u_char *) "on") == 0) {
+        lcf->mode = NGX_HTTP_TORBLOCKER_ON;
+
+    } else if (ngx_strcasecmp(value[1].data, (u_char *) "only") == 0) {
+        lcf->mode = NGX_HTTP_TORBLOCKER_ONLY;
+
+    } else {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "invalid value \"%V\" in \"%V\" directive, "
+                           "it must be \"off\", \"on\", or \"only\"",
+                           &value[1], &cmd->name);
+        return NGX_CONF_ERROR;
+    }
+
+    return NGX_CONF_OK;
+}
 
 /*
  * Create main configuration
@@ -200,7 +237,7 @@ ngx_http_torblocker_create_loc_conf(ngx_conf_t *cf)
         return NULL;
     }
 
-    lcf->enabled = NGX_CONF_UNSET;
+    lcf->mode = NGX_CONF_UNSET_UINT;
 
     return lcf;
 }
@@ -214,7 +251,7 @@ ngx_http_torblocker_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_http_torblocker_loc_conf_t *prev = parent;
     ngx_http_torblocker_loc_conf_t *conf = child;
 
-    ngx_conf_merge_value(conf->enabled, prev->enabled, 0);  /* Default: disabled */
+    ngx_conf_merge_uint_value(conf->mode, prev->mode, NGX_HTTP_TORBLOCKER_OFF);
 
     return NGX_CONF_OK;
 }
@@ -815,7 +852,7 @@ ngx_http_torblocker_resolve_handler(ngx_resolver_ctx_t *rctx)
     p = ctx->request->last;
     p = ngx_sprintf(p, "GET %V HTTP/1.1\r\n", &ctx->uri);
     p = ngx_sprintf(p, "Host: %V\r\n", &ctx->host);
-    p = ngx_sprintf(p, "User-Agent: nginx-torblocker/2.0\r\n");
+    p = ngx_sprintf(p, "User-Agent: nginx-torblocker/2.1\r\n");
     p = ngx_sprintf(p, "Accept: */*\r\n");
     p = ngx_sprintf(p, "Connection: close\r\n");
     p = ngx_sprintf(p, "\r\n");
@@ -1040,7 +1077,7 @@ ngx_http_torblocker_update_handler(ngx_event_t *ev)
 }
 
 /*
- * Check if an IP is in the blocked list
+ * Check if an IP is in the Tor exit node list
  */
 static ngx_int_t
 ngx_http_torblocker_check_ip(ngx_http_torblocker_main_conf_t *mcf, ngx_str_t *ip)
@@ -1060,6 +1097,11 @@ ngx_http_torblocker_check_ip(ngx_http_torblocker_main_conf_t *mcf, ngx_str_t *ip
 
 /*
  * Access phase handler
+ *
+ * Mode behaviors:
+ *   - OFF:  Allow all traffic (no blocking)
+ *   - ON:   Block Tor exit nodes
+ *   - ONLY: Allow ONLY Tor exit nodes (block clearnet)
  */
 static ngx_int_t
 ngx_http_torblocker_handler(ngx_http_request_t *r)
@@ -1072,15 +1114,18 @@ ngx_http_torblocker_handler(ngx_http_request_t *r)
     struct sockaddr_in6             *sin6;
 #endif
     u_char                           addr[NGX_INET6_ADDRSTRLEN];
+    ngx_int_t                        is_tor;
 
     lcf = ngx_http_get_module_loc_conf(r, ngx_http_torblocker_module);
 
-    if (!lcf->enabled) {
+    /* If mode is OFF, allow all traffic */
+    if (lcf->mode == NGX_HTTP_TORBLOCKER_OFF) {
         return NGX_DECLINED;
     }
 
     mcf = ngx_http_get_module_main_conf(r, ngx_http_torblocker_module);
 
+    /* Get client IP address */
     switch (r->connection->sockaddr->sa_family) {
     case AF_INET:
         sin = (struct sockaddr_in *) r->connection->sockaddr;
@@ -1098,20 +1143,58 @@ ngx_http_torblocker_handler(ngx_http_request_t *r)
                                    &sin6->sin6_addr.s6_addr[12],
                                    addr, NGX_INET_ADDRSTRLEN);
         } else {
+            /* Pure IPv6 - not in Tor exit list (IPv4 only) */
+            if (lcf->mode == NGX_HTTP_TORBLOCKER_ONLY) {
+                /* In "only" mode, block non-Tor (IPv6) traffic */
+                ngx_log_error(NGX_LOG_WARN, r->connection->log, 0,
+                              "torblocker: blocking non-Tor IPv6 client (mode=only)");
+                return NGX_HTTP_FORBIDDEN;
+            }
             return NGX_DECLINED;
         }
         break;
 #endif
 
     default:
+        /* Unknown address family */
+        if (lcf->mode == NGX_HTTP_TORBLOCKER_ONLY) {
+            return NGX_HTTP_FORBIDDEN;
+        }
         return NGX_DECLINED;
     }
 
-    if (ngx_http_torblocker_check_ip(mcf, &ip)) {
-        ngx_log_error(NGX_LOG_WARN, r->connection->log, 0,
-                      "torblocker: blocking Tor exit node %V", &ip);
+    /* Check if the IP is a Tor exit node */
+    is_tor = ngx_http_torblocker_check_ip(mcf, &ip);
 
-        return NGX_HTTP_FORBIDDEN;
+    switch (lcf->mode) {
+    case NGX_HTTP_TORBLOCKER_ON:
+        /* Block Tor traffic */
+        if (is_tor) {
+            ngx_log_error(NGX_LOG_WARN, r->connection->log, 0,
+                          "torblocker: blocking Tor exit node %V", &ip);
+            return NGX_HTTP_FORBIDDEN;
+        }
+        break;
+
+    case NGX_HTTP_TORBLOCKER_ONLY:
+        /* Allow ONLY Tor traffic (block clearnet) */
+        if (!is_tor) {
+            /*
+             * Note: If list is not initialized yet, we fail-open
+             * (allow traffic) to avoid blocking legitimate users
+             * during startup/list refresh failures.
+             */
+            if (mcf->initialized && mcf->ip_count > 0) {
+                ngx_log_error(NGX_LOG_WARN, r->connection->log, 0,
+                              "torblocker: blocking non-Tor client %V (mode=only)", &ip);
+                return NGX_HTTP_FORBIDDEN;
+            }
+        }
+        break;
+
+    default:
+        /* OFF or unknown - allow */
+        break;
     }
 
     return NGX_DECLINED;

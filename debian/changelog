@@ -1,3 +1,12 @@
+nginx-torblocker (2.1.0-1) unstable; urgency=medium
+
+  * Added "torblock only" mode - allow ONLY Tor traffic (block clearnet)
+  * Three operation modes: off (allow all), on (block Tor), only (Tor only)
+  * Useful for privacy-focused endpoints and anonymous submission portals
+  * Updated documentation with new mode examples
+
+ -- Rumen Damyanov <contact@rumenx.com>  Fri, 10 Jan 2026 14:00:00 +0200
+
 nginx-torblocker (2.0.0-1) unstable; urgency=medium
 
   * Major rewrite: Implemented actual Tor blocking functionality
