@@ -30,6 +30,7 @@ typedef struct {
     ngx_uint_t          ip_count;       /* Number of IPs loaded */
     ngx_event_t         update_event;   /* Timer event for updates */
     ngx_log_t          *log;            /* Log for events */
+    ngx_resolver_t     *resolver;       /* DNS resolver reference */
     unsigned            initialized:1;  /* Whether hash is initialized */
     unsigned            updating:1;     /* Whether update is in progress */
 #if (NGX_HTTP_SSL)

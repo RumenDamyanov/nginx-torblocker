@@ -158,6 +158,7 @@ ngx_http_torblocker_create_main_conf(ngx_conf_t *cf)
     mcf->initialized = 0;
     mcf->updating = 0;
     mcf->log = cf->log;
+    mcf->resolver = NULL;
 #if (NGX_HTTP_SSL)
     mcf->ssl = NULL;
 #endif
@@ -257,13 +258,15 @@ ngx_http_torblocker_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 }
 
 /*
- * Initialize module - register access phase handler
+ * Initialize module - register access phase handler and capture resolver
  */
 static ngx_int_t
 ngx_http_torblocker_init(ngx_conf_t *cf)
 {
-    ngx_http_handler_pt        *h;
-    ngx_http_core_main_conf_t  *cmcf;
+    ngx_http_handler_pt             *h;
+    ngx_http_core_main_conf_t       *cmcf;
+    ngx_http_core_loc_conf_t        *clcf;
+    ngx_http_torblocker_main_conf_t *mcf;
 
     cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
 
@@ -274,6 +277,14 @@ ngx_http_torblocker_init(ngx_conf_t *cf)
     }
 
     *h = ngx_http_torblocker_handler;
+
+    /* Capture resolver reference from core loc conf */
+    mcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_torblocker_module);
+    clcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
+
+    if (mcf != NULL && clcf != NULL && clcf->resolver != NULL) {
+        mcf->resolver = clcf->resolver;
+    }
 
     return NGX_OK;
 }
@@ -796,6 +807,8 @@ ngx_http_torblocker_resolve_handler(ngx_resolver_ctx_t *rctx)
     ngx_int_t                        rc;
     struct sockaddr_in              *sin;
     u_char                          *p;
+    u_char                           text[NGX_SOCKADDR_STRLEN];
+    ngx_str_t                        addr_str;
 
     ctx = rctx->data;
     mcf = ctx->mcf;
@@ -811,16 +824,17 @@ ngx_http_torblocker_resolve_handler(ngx_resolver_ctx_t *rctx)
         return;
     }
 
-    ngx_log_error(NGX_LOG_INFO, mcf->log, 0,
-                  "torblocker: resolved %V to %ud.%ud.%ud.%ud",
-                  &ctx->host,
-                  (rctx->addrs[0] >> 0) & 0xff,
-                  (rctx->addrs[0] >> 8) & 0xff,
-                  (rctx->addrs[0] >> 16) & 0xff,
-                  (rctx->addrs[0] >> 24) & 0xff);
+    /* Log resolved address */
+    addr_str.data = text;
+    addr_str.len = ngx_sock_ntop(rctx->addrs[0].sockaddr, rctx->addrs[0].socklen,
+                                  text, NGX_SOCKADDR_STRLEN, 0);
 
-    /* Set up peer connection */
-    ctx->peer.sockaddr = ngx_pcalloc(ctx->pool, sizeof(struct sockaddr_in));
+    ngx_log_error(NGX_LOG_INFO, mcf->log, 0,
+                  "torblocker: resolved %V to %V",
+                  &ctx->host, &addr_str);
+
+    /* Set up peer connection - copy the resolved sockaddr */
+    ctx->peer.sockaddr = ngx_pcalloc(ctx->pool, rctx->addrs[0].socklen);
     if (ctx->peer.sockaddr == NULL) {
         mcf->updating = 0;
         ngx_resolve_name_done(rctx);
@@ -828,12 +842,13 @@ ngx_http_torblocker_resolve_handler(ngx_resolver_ctx_t *rctx)
         return;
     }
 
-    sin = (struct sockaddr_in *) ctx->peer.sockaddr;
-    sin->sin_family = AF_INET;
-    sin->sin_port = htons(ctx->port);
-    sin->sin_addr.s_addr = rctx->addrs[0];
+    ngx_memcpy(ctx->peer.sockaddr, rctx->addrs[0].sockaddr, rctx->addrs[0].socklen);
 
-    ctx->peer.socklen = sizeof(struct sockaddr_in);
+    /* Set the port */
+    sin = (struct sockaddr_in *) ctx->peer.sockaddr;
+    sin->sin_port = htons(ctx->port);
+
+    ctx->peer.socklen = rctx->addrs[0].socklen;
     ctx->peer.name = &ctx->host;
     ctx->peer.get = ngx_event_get_peer;
     ctx->peer.log = mcf->log;
@@ -905,8 +920,6 @@ ngx_http_torblocker_update_handler(ngx_event_t *ev)
     ngx_http_torblocker_fetch_ctx_t *ctx;
     ngx_pool_t                      *pool;
     ngx_resolver_ctx_t              *rctx;
-    ngx_http_core_loc_conf_t        *clcf;
-    ngx_http_core_main_conf_t       *cmcf;
     u_char                          *p, *host_start, *uri_start;
     size_t                           len;
 
@@ -1018,19 +1031,8 @@ ngx_http_torblocker_update_handler(ngx_event_t *ev)
         return;
     }
 
-    /* Get resolver */
-    cmcf = ngx_http_cycle_get_module_main_conf(ngx_cycle, ngx_http_core_module);
-    if (cmcf == NULL) {
-        ngx_log_error(NGX_LOG_ERR, mcf->log, 0,
-                      "torblocker: cannot get http core main conf");
-        mcf->updating = 0;
-        ngx_destroy_pool(pool);
-        ngx_http_torblocker_schedule_retry(mcf);
-        return;
-    }
-
-    clcf = cmcf->phase_engine.handlers->conf;
-    if (clcf == NULL || clcf->resolver == NULL) {
+    /* Check if resolver is available */
+    if (mcf->resolver == NULL) {
         ngx_log_error(NGX_LOG_ERR, mcf->log, 0,
                       "torblocker: no resolver configured. "
                       "Add 'resolver 1.1.1.1;' or 'resolver 127.0.0.53;' to http block");
@@ -1040,7 +1042,7 @@ ngx_http_torblocker_update_handler(ngx_event_t *ev)
         return;
     }
 
-    rctx = ngx_resolve_start(clcf->resolver, NULL);
+    rctx = ngx_resolve_start(mcf->resolver, NULL);
     if (rctx == NULL) {
         ngx_log_error(NGX_LOG_ERR, mcf->log, 0,
                       "torblocker: failed to start DNS resolve");
