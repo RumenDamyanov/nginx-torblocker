@@ -10,7 +10,9 @@ A simple Nginx module to block access from Tor exit nodes.
 ## Features
 
 - Blocks requests from Tor exit nodes
-- Regularly updates the list of Tor exit nodes
+- **Automatically fetches** the Tor exit node list from URL (no cron jobs needed!)
+- **HTTPS support** for secure list fetching (requires nginx with SSL support)
+- Configurable update interval for automatic list refresh
 - Easy to configure and integrate with Nginx
 - Per-location and per-server configuration
 
@@ -67,6 +69,7 @@ sudo apt install nginx-torblocker
 ```
 
 **Supported Versions:**
+
 - Ubuntu 24.04 (Noble) - Use `xUbuntu_24.04`
 - Ubuntu 22.04 (Jammy) - Use `xUbuntu_22.04`
 - Debian 12 (Bookworm) - Use `Debian_12`
@@ -85,8 +88,10 @@ sudo dnf install nginx-torblocker
 ```
 
 **Supported Versions:**
+
 - Fedora 42 - Use `Fedora_42`
 - Fedora 41 - Use `Fedora_41`
+- Fedora 40 - Use `Fedora_40`
 
 #### openSUSE
 
@@ -102,6 +107,7 @@ sudo zypper install nginx-torblocker
 ```
 
 **Supported Versions:**
+
 - openSUSE Tumbleweed - Use `openSUSE_Tumbleweed`
 - openSUSE Leap 15.6 - Use `openSUSE_Leap_15.6`
 - openSUSE Leap 16.0 - Use `openSUSE_Leap_16.0`
@@ -117,11 +123,15 @@ sudo dnf install nginx-torblocker
 ```
 
 **Supported Versions:**
+
+- RHEL/CentOS 9 - Use `RHEL_9`
+- RHEL/CentOS 8 - Use `RHEL_8`
 - RHEL/CentOS 7 - Use `RHEL_7`
 
 ### After Installation
 
 After installing the package, the module will be installed to:
+
 - **Debian/Ubuntu**: `/usr/lib/nginx/modules/ngx_http_torblocker_module.so`
 - **Fedora/RHEL/openSUSE**: `/usr/lib64/nginx/modules/ngx_http_torblocker_module.so`
 
@@ -219,9 +229,15 @@ See `conf/test.conf` for a full example. Basic usage:
 
 ```nginx
 http {
+    # Required: DNS resolver for fetching the Tor exit list
+    resolver 1.1.1.1 9.9.9.9;
+    
+    # Enable Tor blocking (uses default URL and update interval)
     torblock on;
 }
 ```
+
+The module **automatically fetches** the Tor exit node list from the Tor Project - no cron jobs or external scripts needed!
 
 ## Configuration Reference
 
@@ -232,8 +248,13 @@ http {
 | Directive | Context | Default | Description |
 |-----------|---------|---------|-------------|
 | `torblock` | http, server, location | `off` | Enable/disable Tor blocking |
-| `torblock_list_url` | http, server, location | Auto-detected | URL for Tor exit node list |
-| `torblock_update_interval` | http, server, location | `3600000` | Update interval in milliseconds (1 hour) |
+| `torblock_list_url` | http | `https://check.torproject.org/torbulkexitlist` | URL for Tor exit node list |
+| `torblock_update_interval` | http | `3600000` | Auto-update interval in ms (1 hour) |
+
+**Notes:**
+
+- The module requires a `resolver` directive in the http block for DNS resolution. You can also use a local resolver like `127.0.0.53` (systemd-resolved) or `127.0.0.1` (dnsmasq/unbound) for better privacy.
+- **HTTPS Support**: The default URL uses HTTPS. If your nginx wasn't built with SSL support (`--with-http_ssl_module`), you can use an HTTP URL instead: `http://check.torproject.org/torbulkexitlist`
 
 ### Context Hierarchy
 
@@ -255,7 +276,9 @@ Child contexts inherit from parent contexts, and more specific settings override
 
 ```nginx
 http {
-    # Enable globally with defaults
+    resolver 1.1.1.1 9.9.9.9;  # Required for DNS resolution
+    
+    # Enable Tor blocking with automatic list updates
     torblock on;
 }
 ```
@@ -264,38 +287,57 @@ http {
 
 ```nginx
 http {
-    # Configure custom settings
-    torblock on;
-    torblock_list_url "https://check.torproject.org/cgi-bin/TorBulkExitList.py?ip=$remote_addr";
-    torblock_update_interval 600000; # 10 minutes
+    resolver 1.1.1.1 9.9.9.9 valid=300s;
+    resolver_timeout 5s;
+    
+    # Optional: custom URL and update interval
+    torblock_list_url "https://check.torproject.org/torbulkexitlist";
+    torblock_update_interval 600000; # Update every 10 minutes
 
     # Per-server configuration
     server {
-        torblock off; # Disable for specific server
+        torblock off; # Disable for this server
 
-        # Per-location configuration
         location /api {
             torblock on; # Re-enable for specific location
+        }
+    }
+    
+    server {
+        server_name secure.example.com;
+        torblock on; # Enable for this server
+        
+        location /public {
+            torblock off; # Allow Tor for public content
         }
     }
 }
 ```
 
-### Block Tor access except for specific IP
+### Selective Blocking by Location
 
 ```nginx
 http {
-    torblock on;
-
-    # Allow specific IP even if it's a Tor exit node
-    geo $allow_tor {
-        default 0;
-        192.168.1.100 1;
-    }
+    resolver 1.1.1.1 9.9.9.9;
+    torblock off;  # Default: allow Tor
 
     server {
-        if ($allow_tor) {
-            set $torblock "off";
+        listen 80;
+        server_name example.com;
+
+        # Public content - Tor allowed
+        location / {
+            root /var/www/html;
+        }
+
+        # Admin area - block Tor
+        location /admin {
+            torblock on;
+        }
+
+        # API - block Tor
+        location /api {
+            torblock on;
         }
     }
 }
@@ -307,6 +349,7 @@ You can enable or disable the module at different levels for flexible access con
 
 ```nginx
 http {
+    resolver 1.1.1.1 9.9.9.9;
     torblock off; # Default: allow Tor everywhere
 
     # Enable Tor blocking only for a specific vhost
@@ -335,6 +378,7 @@ http {
 ## Troubleshooting
 
 🔧 **For comprehensive troubleshooting guides, see:**
+
 - **[Troubleshooting Guide](https://github.com/RumenDamyanov/nginx-torblocker/wiki/Troubleshooting-Guide)** - Detailed diagnostic procedures and solutions
 - **[Testing Procedures](https://github.com/RumenDamyanov/nginx-torblocker/wiki/Testing-Procedures)** - Validate your configuration and performance
 - **[Performance Tuning](https://github.com/RumenDamyanov/nginx-torblocker/wiki/Performance-Tuning)** - Optimize for your environment
@@ -344,31 +388,37 @@ http {
 ### Common Issues
 
 #### Module fails to load
+
 ```
 nginx: [emerg] dlopen() "/usr/lib/nginx/modules/ngx_http_torblocker_module.so" failed
 ```
 
 **Solutions:**
+
 - Ensure the module was built against the same Nginx version you're running
 - Check file permissions: `chmod 644 /usr/lib/nginx/modules/ngx_http_torblocker_module.so`
 - Verify the module path in your `load_module` directive
 
 #### Configuration test fails
+
 ```
 nginx: [emerg] unknown directive "torblock"
 ```
 
 **Solutions:**
+
 - Ensure `load_module` directive is at the top of `nginx.conf` (before any `http` block)
 - Verify the module file exists and is readable
 - Check Nginx error logs for detailed error messages
 
 #### Module version mismatch
+
 ```
 nginx: [emerg] module "/usr/lib/nginx/modules/ngx_http_torblocker_module.so" version 1024000 instead of 1026000
 ```
 
 **Solutions:**
+
 - Rebuild the module against your exact Nginx version
 - Download the correct Nginx source version with `nginx -v`
 
@@ -443,6 +493,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 Please also read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
 
 🗣️ **Join the conversation**: Use our [Community Discussions](https://github.com/RumenDamyanov/nginx-torblocker/discussions) to:
+
 - Propose new features or improvements
 - Share your use cases and configurations
 - Get help with development setup
