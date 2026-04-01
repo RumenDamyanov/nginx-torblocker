@@ -555,6 +555,20 @@ A self-hosted apt repository is planned to provide signed, reproducible builds w
 
 For now, please use the official GitHub Releases or build from source.
 
+## Related Projects
+
+Other nginx dynamic modules we maintain:
+
+| Module | Description | GitHub | OBS |
+|--------|-------------|--------|-----|
+| **nginx-gone** | Return HTTP 410 Gone for permanently removed URIs | [GitHub](https://github.com/RumenDamyanov/nginx-gone) | [OBS](https://build.opensuse.org/package/show/home:rumenx/nginx-gone) |
+| **nginx-cf-realip** | Automatic Cloudflare edge IP list fetcher for real client IP restoration | [GitHub](https://github.com/RumenDamyanov/nginx-cf-realip) | [OBS](https://build.opensuse.org/package/show/home:rumenx/nginx-cf-realip) |
+| **nginx-waf** | IP/CIDR-based access control with named lists and tag-based organization | [GitHub](https://github.com/RumenDamyanov/nginx-waf) | [OBS](https://build.opensuse.org/package/show/home:rumenx/nginx-waf) |
+| **nginx-waf-api** | REST API daemon for dynamic nginx-waf IP list management | [GitHub](https://github.com/RumenDamyanov/nginx-waf-api) | [OBS](https://build.opensuse.org/package/show/home:rumenx/nginx-waf-api) |
+| **nginx-waf-feeds** | Automatic threat feed updater for nginx-waf | [GitHub](https://github.com/RumenDamyanov/nginx-waf-feeds) | [OBS](https://build.opensuse.org/package/show/home:rumenx/nginx-waf-feeds) |
+| **nginx-waf-ui** | Web management interface for nginx-waf | [GitHub](https://github.com/RumenDamyanov/nginx-waf-ui) | [OBS](https://build.opensuse.org/package/show/home:rumenx/nginx-waf-ui) |
+| **nginx-waf-lua** | OpenResty/Lua integration for nginx-waf | [GitHub](https://github.com/RumenDamyanov/nginx-waf-lua) | [OBS](https://build.opensuse.org/package/show/home:rumenx/nginx-waf-lua) |
+
 ## Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for detailed information on:
