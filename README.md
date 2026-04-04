@@ -569,6 +569,20 @@ Other nginx dynamic modules we maintain:
 | **nginx-waf-ui** | Web management interface for nginx-waf | [GitHub](https://github.com/RumenDamyanov/nginx-waf-ui) | [OBS](https://build.opensuse.org/package/show/home:rumenx/nginx-waf-ui) |
 | **nginx-waf-lua** | OpenResty/Lua integration for nginx-waf | [GitHub](https://github.com/RumenDamyanov/nginx-waf-lua) | [OBS](https://build.opensuse.org/package/show/home:rumenx/nginx-waf-lua) |
 
+### Apache HTTP Server Versions
+
+All modules are also available for Apache httpd:
+
+| Module | Description | GitHub | OBS |
+|--------|-------------|--------|-----|
+| **apache-torblocker** | Control access from Tor exit nodes | [GitHub](https://github.com/RumenDamyanov/apache-torblocker) | [OBS](https://build.opensuse.org/package/show/home:rumenx/apache-torblocker) |
+| **apache-gone** | Return HTTP 410 Gone for permanently removed URIs | [GitHub](https://github.com/RumenDamyanov/apache-gone) | [OBS](https://build.opensuse.org/package/show/home:rumenx/apache-gone) |
+| **apache-cf-realip** | Cloudflare real IP restoration via `mod_remoteip` | [GitHub](https://github.com/RumenDamyanov/apache-cf-realip) | [OBS](https://build.opensuse.org/package/show/home:rumenx/apache-cf-remoteip) |
+| **apache-waf** | IP/CIDR-based access control with named lists | [GitHub](https://github.com/RumenDamyanov/apache-waf) | [OBS](https://build.opensuse.org/package/show/home:rumenx/apache-waf) |
+| **apache-waf-api** | REST API for dynamic WAF IP list management | [GitHub](https://github.com/RumenDamyanov/apache-waf-api) | [OBS](https://build.opensuse.org/package/show/home:rumenx/apache-waf-api) |
+| **apache-waf-feeds** | Automatic threat feed updater for apache-waf | [GitHub](https://github.com/RumenDamyanov/apache-waf-feeds) | [OBS](https://build.opensuse.org/package/show/home:rumenx/apache-waf-feeds) |
+| **apache-waf-ui** | Web management interface for apache-waf | [GitHub](https://github.com/RumenDamyanov/apache-waf-ui) | [OBS](https://build.opensuse.org/package/show/home:rumenx/apache-waf-ui) |
+
 ## Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for detailed information on:
