@@ -577,7 +577,7 @@ All modules are also available for Apache httpd:
 |--------|-------------|--------|-----|
 | **apache-torblocker** | Control access from Tor exit nodes | [GitHub](https://github.com/RumenDamyanov/apache-torblocker) | [OBS](https://build.opensuse.org/package/show/home:rumenx/apache-torblocker) |
 | **apache-gone** | Return HTTP 410 Gone for permanently removed URIs | [GitHub](https://github.com/RumenDamyanov/apache-gone) | [OBS](https://build.opensuse.org/package/show/home:rumenx/apache-gone) |
-| **apache-cf-realip** | Cloudflare real IP restoration via `mod_remoteip` | [GitHub](https://github.com/RumenDamyanov/apache-cf-realip) | [OBS](https://build.opensuse.org/package/show/home:rumenx/apache-cf-remoteip) |
+| **apache-cf-realip** | Cloudflare real IP restoration via `mod_remoteip` | [GitHub](https://github.com/RumenDamyanov/apache-cf-realip) | [OBS](https://build.opensuse.org/package/show/home:rumenx/apache-cf-realip) |
 | **apache-waf** | IP/CIDR-based access control with named lists | [GitHub](https://github.com/RumenDamyanov/apache-waf) | [OBS](https://build.opensuse.org/package/show/home:rumenx/apache-waf) |
 | **apache-waf-api** | REST API for dynamic WAF IP list management | [GitHub](https://github.com/RumenDamyanov/apache-waf-api) | [OBS](https://build.opensuse.org/package/show/home:rumenx/apache-waf-api) |
 | **apache-waf-feeds** | Automatic threat feed updater for apache-waf | [GitHub](https://github.com/RumenDamyanov/apache-waf-feeds) | [OBS](https://build.opensuse.org/package/show/home:rumenx/apache-waf-feeds) |
