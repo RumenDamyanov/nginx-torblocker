@@ -496,7 +496,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.determine-version.outputs.tag }}
           name: "nginx-torblocker ${{ needs.determine-version.outputs.version }}"
