@@ -9,6 +9,8 @@
 #include <ngx_event_openssl.h>
 #endif
 
+#define NGX_HTTP_TORBLOCKER_VERSION "2.1.1"
+
 /* Torblock mode values */
 #define NGX_HTTP_TORBLOCKER_OFF   0  /* Allow all traffic (default) */
 #define NGX_HTTP_TORBLOCKER_ON    1  /* Block Tor traffic */

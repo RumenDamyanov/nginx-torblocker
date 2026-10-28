@@ -51,7 +51,8 @@ override_dh_auto_build:
 			$$(pkg-config --cflags libpcre2-8 2>/dev/null || echo "-I/usr/include/pcre2") \
 			-DNGX_HTTP_HEADERS \
 			-o $$BUILD_DIR/ngx_http_torblocker_module.so \
-			$$MODULE_PATH/ngx_http_torblocker_module.c; then \
+			$$MODULE_PATH/ngx_http_torblocker_module.c \
+			-lssl -lcrypto; then \
 			echo "Compilation successful"; \
 		else \
 			echo "Compilation failed!"; \
@@ -63,7 +64,8 @@ override_dh_auto_build:
 	if [ -n "$(NGINX_VERSION)" ] && [ -d "/project/headers/nginx-$(NGINX_VERSION)" ]; then \
 		gcc -shared \
 			-o $(BUILDDIR)/ngx_http_torblocker_module.so \
-			$(BUILDDIR)/ngx_http_torblocker_module.o; \
+			$(BUILDDIR)/ngx_http_torblocker_module.o \
+			-lssl -lcrypto; \
 	fi
 
 	echo "Build completed. Module location:"

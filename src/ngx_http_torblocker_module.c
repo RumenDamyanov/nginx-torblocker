@@ -39,9 +39,16 @@ static void ngx_http_torblocker_process_response(ngx_http_torblocker_fetch_ctx_t
 static void ngx_http_torblocker_close_connection(ngx_http_torblocker_fetch_ctx_t *ctx);
 static void ngx_http_torblocker_schedule_retry(ngx_http_torblocker_main_conf_t *mcf);
 
+static ngx_int_t ngx_http_torblocker_build_request(
+    ngx_http_torblocker_fetch_ctx_t *ctx);
+
 #if (NGX_HTTP_SSL)
 static void ngx_http_torblocker_ssl_handshake_handler(ngx_connection_t *c);
 static ngx_int_t ngx_http_torblocker_ssl_init(ngx_http_torblocker_main_conf_t *mcf, ngx_conf_t *cf);
+static ngx_int_t ngx_http_torblocker_ssl_trust_system(ngx_ssl_t *ssl,
+    ngx_log_t *log);
+static ngx_int_t ngx_http_torblocker_pin_tls_host(ngx_connection_t *c,
+    ngx_str_t *host);
 #endif
 
 /* Global reference for process init */
@@ -198,7 +205,72 @@ ngx_http_torblocker_init_main_conf(ngx_conf_t *cf, void *conf)
 
 #if (NGX_HTTP_SSL)
 /*
- * Initialize SSL context for HTTPS fetching
+ * Require a certificate that chains to the system trust store.
+ */
+static ngx_int_t
+ngx_http_torblocker_ssl_trust_system(ngx_ssl_t *ssl, ngx_log_t *log)
+{
+    SSL_CTX_set_verify(ssl->ctx, SSL_VERIFY_PEER, NULL);
+    SSL_CTX_set_verify_depth(ssl->ctx, 4);
+
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+    if (SSL_CTX_set_default_verify_paths(ssl->ctx) == 1) {
+        return NGX_OK;
+    }
+#endif
+
+    if (SSL_CTX_load_verify_locations(ssl->ctx,
+            "/etc/ssl/certs/ca-certificates.crt", NULL) == 1
+        || SSL_CTX_load_verify_locations(ssl->ctx,
+            "/etc/pki/tls/certs/ca-bundle.crt", NULL) == 1
+        || SSL_CTX_load_verify_locations(ssl->ctx,
+            "/etc/ssl/ca-bundle.pem", NULL) == 1)
+    {
+        return NGX_OK;
+    }
+
+    ngx_ssl_error(NGX_LOG_EMERG, log, 0,
+                  "torblocker: failed to load system CA certificates");
+    return NGX_ERROR;
+}
+
+
+/*
+ * Send SNI and require the certificate to match the URL host.
+ * host->data is NUL-terminated.
+ */
+static ngx_int_t
+ngx_http_torblocker_pin_tls_host(ngx_connection_t *c, ngx_str_t *host)
+{
+    int  rc;
+
+#ifdef SSL_set_tlsext_host_name
+    SSL_set_tlsext_host_name(c->ssl->connection, (char *) host->data);
+#endif
+
+#if OPENSSL_VERSION_NUMBER >= 0x10101000L
+    rc = SSL_set1_host(c->ssl->connection, (const char *) host->data);
+#else
+    {
+        X509_VERIFY_PARAM  *param;
+
+        param = SSL_get0_param(c->ssl->connection);
+        rc = X509_VERIFY_PARAM_set1_host(param, (const char *) host->data,
+                                         host->len);
+    }
+#endif
+
+    if (rc != 1) {
+        return NGX_ERROR;
+    }
+
+    return NGX_OK;
+}
+
+
+/*
+ * Initialize SSL context for HTTPS fetching.
+ * TLS 1.2 and 1.3 only, with peer certificate verification.
  */
 static ngx_int_t
 ngx_http_torblocker_ssl_init(ngx_http_torblocker_main_conf_t *mcf, ngx_conf_t *cf)
@@ -210,11 +282,13 @@ ngx_http_torblocker_ssl_init(ngx_http_torblocker_main_conf_t *mcf, ngx_conf_t *c
 
     mcf->ssl->log = cf->log;
 
-    if (ngx_ssl_create(mcf->ssl,
-                       NGX_SSL_SSLv2|NGX_SSL_SSLv3|NGX_SSL_TLSv1
-                       |NGX_SSL_TLSv1_1|NGX_SSL_TLSv1_2|NGX_SSL_TLSv1_3,
-                       NULL) != NGX_OK)
+    if (ngx_ssl_create(mcf->ssl, NGX_SSL_TLSv1_2|NGX_SSL_TLSv1_3, NULL)
+        != NGX_OK)
     {
+        return NGX_ERROR;
+    }
+
+    if (ngx_http_torblocker_ssl_trust_system(mcf->ssl, cf->log) != NGX_OK) {
         return NGX_ERROR;
     }
 
@@ -615,8 +689,8 @@ ngx_http_torblocker_send_request(ngx_http_torblocker_fetch_ctx_t *ctx)
 
 #if (NGX_HTTP_SSL)
     if (ctx->ssl && c->ssl) {
-        n = ngx_ssl_send(c, ctx->request->pos,
-                         ctx->request->last - ctx->request->pos);
+        n = ngx_ssl_write(c, ctx->request->pos,
+                          ctx->request->last - ctx->request->pos);
     } else {
         n = ngx_send(c, ctx->request->pos,
                      ctx->request->last - ctx->request->pos);
@@ -764,9 +838,13 @@ ngx_http_torblocker_connect_handler(ngx_event_t *wev)
                           "torblocker: failed to set SSL session");
         }
 
-#ifdef SSL_set_tlsext_host_name
-        SSL_set_tlsext_host_name(c->ssl->connection, (char *) ctx->host.data);
-#endif
+        if (ngx_http_torblocker_pin_tls_host(c, &ctx->host) != NGX_OK) {
+            ngx_log_error(NGX_LOG_ERR, ctx->mcf->log, 0,
+                          "torblocker: failed to pin TLS hostname");
+            ngx_http_torblocker_close_connection(ctx);
+            ngx_http_torblocker_schedule_retry(ctx->mcf);
+            return;
+        }
 
         c->sendfile = 0;
 
@@ -796,6 +874,47 @@ ngx_http_torblocker_connect_handler(ngx_event_t *wev)
 }
 
 /*
+ * Build the outbound HTTP/1.1 request into a buffer sized for this URL.
+ */
+static ngx_int_t
+ngx_http_torblocker_build_request(ngx_http_torblocker_fetch_ctx_t *ctx)
+{
+    u_char  *p, *end;
+    size_t   len;
+
+    len = sizeof("GET  HTTP/1.1\r\nHost: \r\n") - 1
+          + ctx->uri.len
+          + ctx->host.len
+          + sizeof("User-Agent: nginx-torblocker/\r\n") - 1
+          + ngx_strlen(NGX_HTTP_TORBLOCKER_VERSION)
+          + sizeof("Accept: */*\r\nConnection: close\r\n\r\n") - 1
+          + 1;
+
+    ctx->request = ngx_create_temp_buf(ctx->pool, len);
+    if (ctx->request == NULL) {
+        return NGX_ERROR;
+    }
+
+    p = ctx->request->last;
+    end = ctx->request->end;
+
+    p = ngx_slprintf(p, end, "GET %V HTTP/1.1\r\n", &ctx->uri);
+    p = ngx_slprintf(p, end, "Host: %V\r\n", &ctx->host);
+    p = ngx_slprintf(p, end, "User-Agent: nginx-torblocker/%s\r\n",
+                     NGX_HTTP_TORBLOCKER_VERSION);
+    p = ngx_slprintf(p, end, "Accept: */*\r\n");
+    p = ngx_slprintf(p, end, "Connection: close\r\n\r\n");
+
+    if (p == end) {
+        return NGX_ERROR;
+    }
+
+    ctx->request->last = p;
+    return NGX_OK;
+}
+
+
+/*
  * DNS resolve handler
  */
 static void
@@ -806,7 +925,6 @@ ngx_http_torblocker_resolve_handler(ngx_resolver_ctx_t *rctx)
     ngx_connection_t                *c;
     ngx_int_t                        rc;
     struct sockaddr_in              *sin;
-    u_char                          *p;
     u_char                           text[NGX_SOCKADDR_STRLEN];
     ngx_str_t                        addr_str;
 
@@ -856,22 +974,12 @@ ngx_http_torblocker_resolve_handler(ngx_resolver_ctx_t *rctx)
 
     ngx_resolve_name_done(rctx);
 
-    /* Build HTTP request */
-    ctx->request = ngx_create_temp_buf(ctx->pool, 1024);
-    if (ctx->request == NULL) {
+    /* Build HTTP request. Size is derived from the URL, not a fixed buffer. */
+    if (ngx_http_torblocker_build_request(ctx) != NGX_OK) {
         mcf->updating = 0;
         ngx_destroy_pool(ctx->pool);
         return;
     }
-
-    p = ctx->request->last;
-    p = ngx_sprintf(p, "GET %V HTTP/1.1\r\n", &ctx->uri);
-    p = ngx_sprintf(p, "Host: %V\r\n", &ctx->host);
-    p = ngx_sprintf(p, "User-Agent: nginx-torblocker/2.1\r\n");
-    p = ngx_sprintf(p, "Accept: */*\r\n");
-    p = ngx_sprintf(p, "Connection: close\r\n");
-    p = ngx_sprintf(p, "\r\n");
-    ctx->request->last = p;
 
     /* Allocate response buffer */
     ctx->response = ngx_create_temp_buf(ctx->pool, NGX_HTTP_TORBLOCKER_RESPONSE_SIZE);
