@@ -1,5 +1,10 @@
 name: Build and Test Nginx TorBlocker
 
+# Smoke-compile on the GitHub runner. Distro and architecture coverage
+# (Debian, Ubuntu, Fedora, openSUSE, x86_64 and aarch64) is the OBS
+# project home:rumenx. The previous jammy/noble matrix ran on the
+# runner itself, so it did not build those releases.
+
 permissions:
   contents: read
 
@@ -12,13 +17,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        ubuntu: [jammy, noble]
-        nginx_version: [1.27.0, 1.28.0]
     env:
-      NGINX_VERSION: ${{ matrix.nginx_version }}
-      UBUNTU_CODENAME: ${{ matrix.ubuntu }}
+      NGINX_VERSION: "1.28.0"
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -26,24 +26,24 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential wget gcc libpcre3-dev zlib1g-dev
+          # Ubuntu 26.04 dropped libpcre3-dev. nginx 1.28 uses PCRE2.
+          sudo apt-get install -y build-essential wget gcc libpcre2-dev zlib1g-dev libssl-dev ca-certificates file
 
       - name: Download and extract Nginx source
         run: |
-          mkdir -p nginx-sources/${{ matrix.nginx_version }}/${{ matrix.ubuntu }}
-          cd nginx-sources/${{ matrix.nginx_version }}/${{ matrix.ubuntu }}
-          wget -nv https://nginx.org/download/nginx-${{ matrix.nginx_version }}.tar.gz
-          tar xzf nginx-${{ matrix.nginx_version }}.tar.gz
+          set -euxo pipefail
+          wget -nv "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz"
+          tar xzf "nginx-${NGINX_VERSION}.tar.gz"
 
       - name: Build dynamic module with Nginx source
         run: |
-          cd nginx-sources/${{ matrix.nginx_version }}/${{ matrix.ubuntu }}/nginx-${{ matrix.nginx_version }}
-          SRC_PATH="$GITHUB_WORKSPACE/src"
-          echo "Using src path: $SRC_PATH"
-          ./configure --add-dynamic-module=$SRC_PATH
-          make modules
-
-      - name: Check module output
-        run: |
-          test -f nginx-sources/${{ matrix.nginx_version }}/${{ matrix.ubuntu }}/nginx-${{ matrix.nginx_version }}/objs/ngx_http_torblocker_module.so
-          file nginx-sources/${{ matrix.nginx_version }}/${{ matrix.ubuntu }}/nginx-${{ matrix.nginx_version }}/objs/ngx_http_torblocker_module.so
+          set -euxo pipefail
+          cd "nginx-${NGINX_VERSION}"
+          ./configure \
+            --add-dynamic-module="$GITHUB_WORKSPACE/src" \
+            --with-http_ssl_module \
+            --with-compat
+          make modules -j"$(nproc)"
+          file "objs/ngx_http_torblocker_module.so"
+          # The HTTPS client must be in the module, not compiled out.
+          nm -D "objs/ngx_http_torblocker_module.so" | grep -q SSL_CTX_set_verify
